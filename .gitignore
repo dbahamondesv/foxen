@@ -1,0 +1,31 @@
+# Dependencias
+node_modules/
+
+# Build del frontend
+dist/
+*.tsbuildinfo
+
+# Build de Tauri / Rust
+src-tauri/target/
+
+# Paquetes generados
+*.deb
+*.rpm
+*.AppImage
+
+# Secretos y entorno
+.env
+.env.*
+!.env.example
+
+# Flatpak
+.flatpak-builder/
+repo/
+build-dir/
+
+# Editores y SO
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp

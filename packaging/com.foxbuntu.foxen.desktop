@@ -1,0 +1,13 @@
+[Desktop Entry]
+Name=Foxen
+GenericName=Cliente gráfico de Git
+Comment=Cliente de escritorio para gestionar repositorios Git con grafo de commits
+Exec=foxen %f
+Icon=com.foxbuntu.foxen
+Terminal=false
+Type=Application
+Categories=Development;RevisionControl;
+Keywords=git;vcs;version control;source control;repository;commit;branch;merge;diff;
+StartupNotify=true
+StartupWMClass=Foxen
+MimeType=x-scheme-handler/git;

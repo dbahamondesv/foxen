@@ -1,0 +1,111 @@
+# Manifest Flatpak de Foxen.
+#
+# Estrategia: se compila el paquete .deb en el host con `npm run tauri build -- -b deb`
+# y este manifest lo desempaqueta dentro del runtime Flatpak. Es la variante que
+# recomienda la guia oficial de Tauri y evita reconstruir Node/Rust dentro del sandbox.
+#
+# Compilar el .deb:
+#   npm run tauri build -- -b deb
+#   ls src-tauri/target/release/bundle/deb/
+#
+# Construir el flatpak en local:
+#   flatpak install flathub org.gnome.Platform//47 org.gnome.Sdk//47
+#   flatpak-builder --force-clean --user --disable-cache \
+#       --repo flatpak-repo flatpak packaging/com.foxbuntu.foxen.yaml
+#   flatpak run --user com.foxbuntu.foxen
+#
+# Al enviar a Flathub hay que sustituir la fuente `file` por una `url` remota
+# (release de GitHub) con su `sha256`, porque Flathub construye sin red local.
+
+id: com.foxbuntu.foxen
+runtime: org.gnome.Platform
+runtime-version: '47'
+sdk: org.gnome.Sdk
+command: foxen
+
+finish-args:
+  # --- Renderizado de la ventana ---
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+
+  # --- Remotos Git ---
+  - --share=network
+  # Acceso a $SSH_AUTH_SOCK: imprescindible porque el backend resuelve las claves
+  # con git2::Cred::ssh_key_from_agent(). Documentado por Flatpak como requisito
+  # para "Git clients or SSH frontends".
+  - --socket=ssh-auth
+
+  # --- Eleccion de repositorios via portal ---
+  - --talk-name=org.freedesktop.portal.*
+  - --talk-name=org.gtk.vfs.*
+  - --filesystem=xdg-run/gvfsd
+  # Carpetas que el portal puede conceder al abrir un repositorio.
+  - --filesystem=xdg-documents
+  - --filesystem=xdg-download
+  - --filesystem=xdg-public-share
+  - --filesystem=xdg-pictures
+  - --filesystem=xdg-music
+  - --filesystem=xdg-videos
+
+  # --- Credenciales HTTPS persistentes (secret-service) ---
+  - --talk-name=org.freedesktop.secrets
+
+  # --- Avisos ---
+  - --talk-name=org.freedesktop.Notifications
+
+modules:
+  - name: foxen
+    buildsystem: simple
+    sources:
+      # Paquete construido en el host.
+      - type: file
+        path: ../src-tauri/target/release/bundle/deb/Foxen_0.1.0_amd64.deb
+        # Solo arquitectura x86_64 por ahora.
+        only-arches: [x86_64]
+
+      # Para Flathub: subir el .deb a una release y reemplazar lo anterior por
+      #   - type: file
+      #     url: https://github.com/foxbuntu/foxen/releases/download/v0.1.0/foxen_0.1.0_amd64.deb
+      #     sha256: <checksum>
+      #     only-arches: [x86_64]
+
+      # Metadatos AppStream y .desktop propios.
+      - type: file
+        path: com.foxbuntu.foxen.metainfo.xml
+      - type: file
+        path: com.foxbuntu.foxen.desktop
+
+    build-commands:
+      - set -e
+      - mkdir -p deb-extract
+      - cd deb-extract && ar x ../*.deb && cd ..
+      - tar -C deb-extract -xf deb-extract/data.tar.gz
+
+      # Binario
+      - install -Dm755 deb-extract/usr/bin/foxen /app/bin/foxen
+
+      # Metadatos AppStream (obligatorios para Flathub)
+      - install -Dm644 com.foxbuntu.foxen.metainfo.xml
+        /app/share/metainfo/com.foxbuntu.foxen.metainfo.xml
+
+      # .desktop con Categories/Keywords/StartupNotify propios
+      - install -Dm644 com.foxbuntu.foxen.desktop
+        /app/share/applications/com.foxbuntu.foxen.desktop
+
+      # Iconos. El .deb de Tauri genera 32x32, 128x128 y 256x256@2 (512 px reales).
+      # Flathub pide como minimo 128x128 y recomienda 256x256; se instala tambien
+      # 512x512. La falta de un 256x256 nativo se cubre al generar el set de
+      # iconos definitivo de Foxen.
+      - install -Dm644 deb-extract/usr/share/icons/hicolor/32x32/apps/foxen.png
+        /app/share/icons/hicolor/32x32/apps/com.foxbuntu.foxen.png
+      - install -Dm644 deb-extract/usr/share/icons/hicolor/128x128/apps/foxen.png
+        /app/share/icons/hicolor/128x128/apps/com.foxbuntu.foxen.png
+      - install -Dm644 deb-extract/usr/share/icons/hicolor/256x256@2/apps/foxen.png
+        /app/share/icons/hicolor/512x512/apps/com.foxbuntu.foxen.png
+
+    cleanup:
+      - /include
+      - deb-extract
+      - '*.deb'

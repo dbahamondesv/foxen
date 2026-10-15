@@ -1,0 +1,350 @@
+import { useEffect, useMemo, useState } from 'react';
+import { useStore } from '../store/useAppStore';
+import * as ipc from '../lib/ipc';
+import { baseName, changeColor, dirName, statusChar } from '../lib/format';
+import type { FileStatus, HunkSelection, LineSelection } from '../lib/types';
+
+/** Agrupa los archivos por directorio para mostrar un arbol plano. */
+function groupByDirectory(files: FileStatus[]) {
+  const groups = new Map<string, FileStatus[]>();
+  for (const file of files) {
+    const dir = dirName(file.path);
+    const list = groups.get(dir);
+    if (list) list.push(file);
+    else groups.set(dir, [file]);
+  }
+  return [...groups.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+}
+
+export function ChangesPanel() {
+  const repoId = useStore((s) => s.repoId);
+  const status = useStore((s) => s.status);
+  const selectedFile = useStore((s) => s.selectedFile);
+  const selectFile = useStore((s) => s.selectFile);
+  const commitMessage = useStore((s) => s.commitMessage);
+  const setCommitMessage = useStore((s) => s.setCommitMessage);
+  const run = useStore((s) => s.run);
+  const notify = useStore((s) => s.notify);
+
+  const [expanded, setExpanded] = useState(true);
+
+  const staged = useMemo(() => status?.files.filter((f) => f.staged) ?? [], [status]);
+  // Un archivo puede estar a la vez en stage y tener cambios sin anadir: con
+  // `!f.staged` solo aparecia en la columna izquierda y sus cambios sin anadir
+  // quedaban invisibles. Los untracked se incluyen aparte porque el backend los
+  // marca como `untracked`, no como `unstaged`.
+  const unstaged = useMemo(
+    () => status?.files.filter((f) => f.unstaged || (f.untracked && !f.staged)) ?? [],
+    [status],
+  );
+
+  if (!repoId || !status) return <p className="empty">Sin repositorio abierto.</p>;
+
+  /** Stagea/unstagea un archivo desde su columna. */
+  const toggle = (file: FileStatus, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const action = file.staged
+      ? () => ipc.unstageFiles(repoId, [file.path])
+      : () => ipc.stageFiles(repoId, [file.path]);
+    void run(file.staged ? 'Deshacer stage' : 'Hacer stage', action);
+  };
+
+  const stageEverything = () => void run('Hacer stage de todo', () => ipc.stageAll(repoId));
+
+  const unstageEverything = () =>
+    void run('Quitar todo del stage', () =>
+      ipc.unstageFiles(
+        repoId,
+        staged.map((f) => f.path),
+      ),
+    );
+
+  const discard = (file: FileStatus) => {
+    void run(`Descartar ${baseName(file.path)}`, () => ipc.discardFiles(repoId, [file.path]));
+  };
+
+  const commit = () => {
+    const message = commitMessage.trim();
+    if (!message) {
+      notify('error', 'El mensaje del commit no puede estar vacio');
+      return;
+    }
+    void run('Crear commit', async () => {
+      const result = await ipc.createCommit(repoId, message, false, false, false);
+      setCommitMessage('');
+      return result;
+    });
+  };
+
+  const amend = () => {
+    const message = commitMessage.trim();
+    if (!message) {
+      notify('error', 'El mensaje del amend no puede estar vacio');
+      return;
+    }
+    void run('Amend', () => ipc.createCommit(repoId, message, true, false, false));
+  };
+
+  const stashAll = () => void run('Crear stash', () => ipc.pushStash(repoId, null, true, false, false));
+
+  const renderGroup = (title: string, files: FileStatus[], isStagedColumn: boolean) => {
+    if (files.length === 0) return null;
+    return (
+      <section className="changes-group">
+        <header className="changes-group-header">
+          <button
+            type="button"
+            className="changes-toggle"
+            onClick={() => setExpanded((v) => !v)}
+            aria-expanded={expanded}
+          >
+            {expanded ? '▾' : '▸'} {title} ({files.length})
+          </button>
+          {isStagedColumn ? (
+            <button type="button" className="link" onClick={unstageEverything}>
+              Quitar todo
+            </button>
+          ) : (
+            <button type="button" className="link" onClick={stageEverything}>
+              Anadir todo
+            </button>
+          )}
+        </header>
+
+        {expanded &&
+          groupByDirectory(files).map(([dir, group]) => (
+            <div key={dir || '.'} className="file-group">
+              {dir && <div className="file-group-dir">{dir}/</div>}
+              {group.map((file) => (
+                <div
+                  key={`${file.path}-${isStagedColumn}`}
+                  className={`file-row${selectedFile === file.path ? ' is-selected' : ''}`}
+                  onClick={() => void selectFile(file.path, isStagedColumn ? 'staged' : 'worktree')}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      void selectFile(file.path, isStagedColumn ? 'staged' : 'worktree');
+                    }
+                  }}
+                >
+                  {/* Columna del indice */}
+                  <button
+                    type="button"
+                    className={`status-cell ${changeColor(file.kind)}`}
+                    title={isStagedColumn ? 'Quitar del stage' : 'Anadir al stage'}
+                    onClick={(e) => toggle(file, e)}
+                  >
+                    {isStagedColumn ? (file.staged ? statusChar(file) : '') : ''}
+                  </button>
+
+                  {/* Columna del working tree */}
+                  <button
+                    type="button"
+                    className={`status-cell ${changeColor(file.kind)}`}
+                    title={isStagedColumn ? '' : 'Anadir al stage'}
+                    onClick={(e) => toggle(file, e)}
+                  >
+                    {!isStagedColumn && !file.staged ? statusChar(file) : ''}
+                  </button>
+
+                  <span className="file-name" title={file.path}>
+                    {baseName(file.path)}
+                    {file.oldPath && <em className="file-old"> ← {baseName(file.oldPath)}</em>}
+                  </span>
+
+                  {file.conflicted && <span className="badge badge-conflict">conflicto</span>}
+
+                  <span className="file-stats">
+                    {file.insertions > 0 && <span className="ins">+{file.insertions}</span>}
+                    {file.deletions > 0 && <span className="del">−{file.deletions}</span>}
+                  </span>
+
+                  {file.unstaged && (
+                    <button
+                      type="button"
+                      className="link danger"
+                      title="Descartar cambios"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        discard(file);
+                      }}
+                    >
+                      descartar
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          ))}
+      </section>
+    );
+  };
+
+  return (
+    <div className="panel-body changes">
+      {status.conflictedCount > 0 && (
+        <p className="alert alert-error">
+          {status.conflictedCount} archivo(s) en conflicto. Resuelvelos para continuar.
+        </p>
+      )}
+
+      {renderGroup('Staged', staged, true)}
+      {renderGroup('Unstaged', unstaged, false)}
+
+      {status.files.length === 0 && <p className="empty">Working tree limpio.</p>}
+
+      <div className="commit-box">
+        <textarea
+          className="commit-message"
+          placeholder={`Mensaje para ${status.headBranch ?? 'HEAD'}`}
+          value={commitMessage}
+          onChange={(e) => setCommitMessage(e.target.value)}
+          rows={4}
+        />
+        <div className="commit-actions">
+          <button
+            type="button"
+            className="primary"
+            disabled={staged.length === 0}
+            onClick={commit}
+          >
+            Commit {staged.length > 0 ? `(${staged.length})` : ''}
+          </button>
+          <button type="button" disabled={!status.headOid} onClick={amend}>
+            Amend
+          </button>
+          <button
+            type="button"
+            disabled={status.clean}
+            onClick={() => stashAll()}
+          >
+            Stash
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Vista del diff del archivo seleccionado, con stage por fragmento. */
+export function DiffPanel() {
+  const repoId = useStore((s) => s.repoId);
+  const diff = useStore((s) => s.diff);
+  const selectedFile = useStore((s) => s.selectedFile);
+  const run = useStore((s) => s.run);
+  // La clave incluye el hunk: antes se indexaba solo por `lineIndex`, asi que
+  // excluir la linea 0 de un hunk excluia tambien la linea 0 de todos los demas.
+  const lineKey = (hunkIndex: number, lineIndex: number) => `${hunkIndex}:${lineIndex}`;
+  const [excluded, setExcluded] = useState<Record<string, Set<string>>>({});
+
+  // Al cambiar el diff sus indices dejan de tener sentido.
+  useEffect(() => {
+    setExcluded({});
+  }, [diff]);
+
+  if (!repoId || !diff || !selectedFile) {
+    return <p className="empty">Selecciona un archivo para ver el diff.</p>;
+  }
+
+  const file = diff.files[0];
+  if (!file) return <p className="empty">Sin diferencias para este archivo.</p>;
+
+  const selectionFor = (hunkIndex: number): HunkSelection => {
+    const skip = excluded[file.path];
+    const lineSelections: LineSelection[] = [];
+    if (skip) {
+      for (const key of skip) {
+        const [keyHunk, lineIndex] = key.split(':');
+        if (Number(keyHunk) !== hunkIndex) continue;
+        lineSelections.push({ hunkIndex, lineIndex: Number(lineIndex), include: false });
+      }
+    }
+    return {
+      path: file.path,
+      oldPath: file.oldPath,
+      hunkIndices: [hunkIndex],
+      lineSelections,
+      unstage: false,
+    };
+  };
+
+  const toggleLine = (hunkIndex: number, lineIndex: number) => {
+    setExcluded((prev) => {
+      const path = file.path;
+      const set = new Set(prev[path] ?? []);
+      const key = lineKey(hunkIndex, lineIndex);
+      if (set.has(key)) set.delete(key);
+      else set.add(key);
+      return { ...prev, [path]: set };
+    });
+  };
+
+  const stageHunk = (hunkIndex: number) =>
+    void run('Hacer stage del fragmento', () =>
+      ipc.stageHunks(repoId, [selectionFor(hunkIndex)]),
+    );
+
+  const discardHunk = (hunkIndex: number) =>
+    void run('Descartar fragmento', () =>
+      ipc.discardHunk(repoId, file.path, hunkIndex, true),
+    );
+
+  if (file.isBinary) return <p className="empty">Archivo binario: no se puede mostrar el diff.</p>;
+  if (file.tooLarge) return <p className="empty">Archivo demasiado grande para mostrar el diff.</p>;
+
+  return (
+    <div className="panel-body diff">
+      <div className="diff-header">
+        <strong>{file.path}</strong>
+        <span className="file-stats">
+          <span className="ins">+{file.additions}</span>
+          <span className="del">−{file.deletions}</span>
+        </span>
+      </div>
+
+      {file.hunks.map((hunk, hunkIndex) => (
+        <div key={hunkIndex} className="hunk">
+          <div className="hunk-header">
+            <code>{hunk.header}</code>
+            <div className="hunk-actions">
+              <button type="button" className="link" onClick={() => stageHunk(hunkIndex)}>
+                stagear
+              </button>
+              <button type="button" className="link danger" onClick={() => discardHunk(hunkIndex)}>
+                descartar
+              </button>
+            </div>
+          </div>
+
+          {hunk.lines.map((line, lineIndex) => {
+            const skip = excluded[file.path];
+            const isExcluded = skip?.has(lineKey(hunkIndex, lineIndex)) ?? false;
+            const cls =
+              line.origin === '+' ? 'ins' : line.origin === '-' ? 'del' : 'ctx';
+            return (
+              <div
+                key={lineIndex}
+                className={`diff-line ${cls}${isExcluded ? ' is-excluded' : ''}`}
+                onClick={() => toggleLine(hunkIndex, lineIndex)}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') toggleLine(hunkIndex, lineIndex);
+                }}
+              >
+                <span className="ln">{line.oldLineno ?? ''}</span>
+                <span className="ln">{line.newLineno ?? ''}</span>
+                <span className="origin">{line.origin}</span>
+                <span className="code">{line.content}</span>
+              </div>
+            );
+          })}
+        </div>
+      ))}
+
+      {file.hunks.length === 0 && <p className="empty">Sin cambios visibles.</p>}
+      <p className="hint">Pulsa una linea para excluirla del siguiente stage.</p>
+    </div>
+  );
+}

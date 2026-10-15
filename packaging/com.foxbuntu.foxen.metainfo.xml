@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>com.foxbuntu.foxen</id>
+  <launchable type="desktop-id">com.foxbuntu.foxen.desktop</launchable>
+
+  <name>Foxen</name>
+  <summary>Cliente gráfico de Git con grafo de commits interactivo</summary>
+
+  <developer id="com.foxbuntu">
+    <name>Foxbuntu</name>
+  </developer>
+
+  <metadata_license>MIT</metadata_license>
+  <project_license>MIT</project_license>
+
+  <url type="homepage">https://github.com/foxbuntu/foxen</url>
+  <url type="bugtracker">https://github.com/foxbuntu/foxen/issues</url>
+
+  <branding>
+    <color type="primary" scheme_preference="dark">#1f6feb</color>
+    <color type="primary" scheme_preference="light">#0d47a1</color>
+  </branding>
+
+  <content_rating type="oars-1.1"/>
+
+  <keywords>
+    <keyword>git</keyword>
+    <keyword>version control</keyword>
+    <keyword>source control</keyword>
+    <keyword>repository</keyword>
+    <keyword>commit graph</keyword>
+    <keyword>developer</keyword>
+  </keywords>
+
+  <categories>
+    <category>Development</category>
+    <category>Utility</category>
+  </categories>
+
+  <recommends>
+    <display_length compare="ge">1280</display_length>
+  </recommends>
+
+  <requires>
+    <display_length compare="ge">1024</display_length>
+  </requires>
+
+  <supports>
+    <control>pointing</control>
+    <control>keyboard</control>
+    <control>touch</control>
+  </supports>
+
+  <description>
+    <p>
+      Foxen es un cliente de escritorio para Git pensado para trabajar con repositorios
+      grandes: el grafo de commits es la pieza central de la interfaz y está pensado
+      para ser legible y navegable incluso con miles de commits y decenas de ramas.
+    </p>
+    <p>Funciones principales:</p>
+    <ul>
+      <li>Grafo de commits interactivo con ramas, tags y HEAD, coloreado por carril</li>
+      <li>Vista de archivos con staging por archivo y por fragmento (hunk) y por línea</li>
+      <li>Historial completo de cada archivo con sus revisiones anteriores</li>
+      <li>Commits firmados, amend, cherry-pick, revert y reset de rama</li>
+      <li>Stashes con inspección del contenido antes de aplicar o crear una rama</li>
+      <li>Merge y rebase con plan de commits y resolución de conflictos assisted</li>
+      <li>Remotos HTTPS y SSH con credenciales almacenadas de forma segura</li>
+      <li>Flujos de trabajo Git Flow para features, releases y hotfixes</li>
+    </ul>
+    <p>
+      Al ser una aplicación Flatpak, Foxen pide acceso a las carpetas que elijas abrir
+      mediante el diálogo del sistema, y no al resto del disco.
+    </p>
+  </description>
+
+  <screenshots>
+    <screenshot type="default">
+      <image>https://raw.githubusercontent.com/foxbuntu/foxen/main/packaging/screenshots/graph.png</image>
+      <caption>Grafo de commits con ramas y tags</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://raw.githubusercontent.com/foxbuntu/foxen/main/packaging/screenshots/staging.png</image>
+      <caption>Staging por fragmento y por línea</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://raw.githubusercontent.com/foxbuntu/foxen/main/packaging/screenshots/merge.png</image>
+      <caption>Merge y rebase con plan de commits</caption>
+    </screenshot>
+  </screenshots>
+
+  <releases>
+    <release version="0.1.0" date="2026-10-05">
+      <description>
+        <p>Primera versión pública del MVP.</p>
+        <ul>
+          <li>Grafo de commits interactivo con etiquetas de ramas, tags y HEAD</li>
+          <li>Staging por archivo, por fragmento y por línea</li>
+          <li>Commits, amend, cherry-pick, revert y reflog</li>
+          <li>Stashes, merge, rebase y resolución de conflictos</li>
+          <li>Remotos HTTPS y SSH mediante ssh-agent</li>
+          <li>Flujo Git Flow</li>
+        </ul>
+      </description>
+    </release>
+  </releases>
+
+  <update_contact>foxbuntu@protonmail.com</update_contact>
+</component>

@@ -1,0 +1,1487 @@
+/* Foxen — temas claro y oscuro para escritorio Linux.
+ *
+ * `:root` define la paleta CLARA (por defecto) y `[data-theme='dark']` la
+ * oscura. El atributo lo escribe `lib/theme.ts` en el `<html>`, de modo que
+ * cambiar de tema es una sola operacion y todo el CSS se adapta solo.
+ *
+ * Los colores de carril del grafo (`--lane-0` … `--lane-9`) viven aqui y no en
+ * el componente: al estar fuera del SVG se adaptan al tema, y los tonos oscuros
+ * se aclararon porque sobre fondo claro perdian contraste.
+ */
+
+:root {
+  --bg: #ffffff;
+  --bg-elev: #f6f8fa;
+  --bg-elev-2: #eaeef2;
+  --border: #d0d7de;
+  --border-soft: #e4e8ed;
+  --text: #1f2328;
+  --text-dim: #59636e;
+  --text-faint: #818b98;
+  --accent: #0969da;
+  --accent-dim: #0550ae;
+  --added: #1a7f37;
+  --deleted: #cf222e;
+  --warning: #9a6700;
+  --purple: #8250df;
+
+  /* Colores de carril del grafo (contraste sufficient sobre fondo claro). */
+  --lane-0: #0969da;
+  --lane-1: #1a7f37;
+  --lane-2: #9a6700;
+  --lane-3: #8250df;
+  --lane-4: #bf3989;
+  --lane-5: #1b7c83;
+  --lane-6: #cf222e;
+  --lane-7: #8250df;
+  --lane-8: #0a3069;
+  --lane-9: #bc4c00;
+
+  --radius: 6px;
+  --mono: 'JetBrains Mono', 'Fira Code', ui-monospace, 'Cascadia Code', Menlo, monospace;
+  --sans: system-ui, -apple-system, 'Segoe UI', Cantell, Ubuntu, sans-serif;
+}
+
+[data-theme='dark'] {
+  --bg: #0d1117;
+  --bg-elev: #161b22;
+  --bg-elev-2: #1c2129;
+  --border: #30363d;
+  --border-soft: #21262d;
+  --text: #e6edf3;
+  --text-dim: #8b949e;
+  --text-faint: #6e7681;
+  --accent: #58a6ff;
+  --accent-dim: #1f6feb;
+  --added: #3fb950;
+  --deleted: #f85149;
+  --warning: #d29922;
+  --purple: #a371f7;
+
+  /* Tonos mas claros y saturados: sobre fondo oscuro saturan menos. */
+  --lane-0: #58a6ff;
+  --lane-1: #3fb950;
+  --lane-2: #d29922;
+  --lane-3: #a371f7;
+  --lane-4: #f778ba;
+  --lane-5: #39c5cf;
+  --lane-6: #ff7b72;
+  --lane-7: #bc8cff;
+  --lane-8: #7ee787;
+  --lane-9: #ffa657;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 13px;
+  line-height: 1.5;
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+code,
+pre,
+.mono {
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+/* ---------------------------------------------------------------- Topbar */
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 0 12px;
+  height: 42px;
+  background: var(--bg-elev);
+  border-bottom: 1px solid var(--border);
+  flex: 0 0 auto;
+}
+
+.topbar-branch {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.topbar-tracking {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-dim);
+}
+
+.topbar-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.graph-filter {
+  width: 180px;
+}
+
+/* ---------------------------------------------------------- Repo picker */
+
+.repo-picker {
+  position: relative;
+}
+
+.repo-button {
+  font-weight: 700;
+  letter-spacing: 0.3px;
+}
+
+.repo-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 50;
+  min-width: 320px;
+  background: var(--bg-elev-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 55%);
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.repo-menu-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  text-align: left;
+  background: none;
+  border: none;
+  color: var(--text);
+  padding: 7px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  width: 100%;
+}
+
+.repo-menu-item:hover {
+  background: var(--accent-dim);
+}
+
+.repo-menu-item small {
+  color: var(--text-dim);
+  font-size: 11px;
+  word-break: break-all;
+}
+
+.repo-menu-sep {
+  padding: 6px 10px 4px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--text-faint);
+  border-top: 1px solid var(--border-soft);
+  margin-top: 4px;
+}
+
+/* ------------------------------------------------------------- Layout */
+
+.layout {
+  display: grid;
+  grid-template-columns: 340px 1fr 340px;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.sidebar,
+.inspector {
+  background: var(--bg-elev);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.sidebar {
+  border-right: 1px solid var(--border);
+}
+
+.inspector {
+  border-left: 1px solid var(--border);
+}
+
+/* El panel lateral se puede ocultar desde la barra superior. Al desaparecer
+   deja de ser un item de la rejilla, asi que hay que quitarle su columna:
+   con `340px 1fr 340px` el grafo caeria en la primera. */
+.sidebar.is-hidden {
+  display: none;
+}
+
+.layout.sidebar-hidden {
+  grid-template-columns: 1fr 340px;
+}
+
+.main {
+  position: relative;
+  overflow: auto;
+  min-width: 0;
+}
+
+.panel-body {
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.loading-bar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  animation: slide 1.1s ease-in-out infinite;
+  z-index: 20;
+}
+
+@keyframes slide {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+/* ---------------------------------------------------------- Panel tabs */
+
+.panel-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  padding: 6px;
+  border-bottom: 1px solid var(--border);
+  flex: 0 0 auto;
+}
+
+.panel-tab {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  padding: 4px 8px;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+.panel-tab:hover {
+  background: var(--bg-elev-2);
+  color: var(--text);
+}
+
+.panel-tab.is-active {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.tab-badge {
+  background: var(--border);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 0 5px;
+  font-size: 10px;
+  min-width: 16px;
+  text-align: center;
+}
+
+.panel-tab.is-active .tab-badge {
+  background: color-mix(in srgb, var(--text) 22%, transparent);
+}
+
+/* --------------------------------------------------------------- Graph */
+
+.graph-view {
+  /* Columna: la cabecera va encima del grafo y de la lista de filas. */
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  min-height: 100%;
+  position: relative;
+  --column-gap: 10px;
+}
+
+/*
+  Cabecera pegajosa con el mismo reparto de columnas que las filas. Su primer
+  hijo absorbe el `gap` para que `Refs` empiece donde empieza cada fila.
+*/
+.graph-head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: var(--column-gap);
+  height: 28px;
+  padding-right: 12px;
+  background: var(--bg-elev);
+  border-bottom: 1px solid var(--border);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  user-select: none;
+}
+
+.head-graph {
+  flex: 0 0 auto;
+  /* Sin esto el span queda con altura 0 y no pinta la linea divisoria. */
+  align-self: stretch;
+  margin-right: calc(-1 * var(--column-gap));
+  background: var(--bg-elev);
+  border-right: 1px solid var(--border);
+}
+
+.col-resize {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: -5px;
+  width: 10px;
+  z-index: 1;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.col-resize::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 3px;
+  height: 14px;
+  transform: translate(-50%, -50%);
+  border-radius: 2px;
+  background: transparent;
+}
+
+.col-resize:hover::after,
+.col-resize:active::after {
+  background: var(--accent);
+}
+
+body.is-resizing-column,
+body.is-resizing-column * {
+  cursor: col-resize !important;
+  user-select: none !important;
+}
+
+.graph-body {
+  display: flex;
+  align-items: flex-start;
+}
+
+.graph-svg {
+  flex: 0 0 auto;
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--bg);
+}
+
+.graph-rows {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.graph-row {
+  display: flex;
+  align-items: center;
+  gap: var(--column-gap);
+  padding: 0 12px 0 0;
+  cursor: pointer;
+  border-bottom: 1px solid var(--border-soft);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.graph-row:hover,
+.graph-row.is-hover {
+  background: var(--bg-elev);
+}
+
+.graph-row.is-selected {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+.graph-row.is-head .graph-subject {
+  font-weight: 700;
+}
+
+.graph-row.is-highlight .graph-subject {
+  background: color-mix(in srgb, var(--warning) 32%, transparent);
+  border-radius: 3px;
+}
+
+/* Mismas bandas que la fila, dibujadas dentro del SVG. */
+.graph-band {
+  fill: transparent;
+}
+
+.graph-band.is-hover {
+  fill: var(--bg-elev);
+}
+
+.graph-band.is-selected {
+  fill: color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+.graph-sep {
+  stroke: var(--border-soft);
+  stroke-width: 0.5;
+  opacity: 0.35;
+}
+
+.graph-split {
+  stroke: var(--border);
+  stroke-width: 1;
+}
+
+.graph-mark {
+  fill: var(--accent);
+  opacity: 0.95;
+}
+
+.graph-shortsha {
+  flex: 0 0 auto;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-faint);
+  overflow: hidden;
+}
+
+.graph-labels {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 4px;
+  overflow: hidden;
+}
+
+.graph-subject {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text);
+}
+
+.graph-author {
+  flex: 0 0 auto;
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.graph-time {
+  flex: 0 0 auto;
+  text-align: right;
+  color: var(--text-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/*
+  La cabecera reutiliza las clases de las fila para que ambos repartan las
+  columnas igual; aqui solo se cambia la tipografia y se habilita el tirador.
+  Va despues de las reglas de columna para poder sobrescribirlas.
+*/
+.head-col {
+  position: relative;
+  overflow: visible;
+  font-family: var(--sans);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-faint);
+}
+
+.graph-truncated {
+  padding: 8px 12px;
+  color: var(--text-faint);
+}
+
+/* ---------------------------------------------------------- Ref chips */
+
+.ref-chip {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 9px;
+  border: 1px solid var(--border);
+  background: var(--bg-elev-2);
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.ref-branch { border-color: var(--accent); color: var(--accent); }
+.ref-remoteBranch { border-color: var(--purple); color: var(--purple); }
+.ref-tag { border-color: var(--warning); color: var(--warning); }
+.ref-head { background: var(--accent-dim); color: #fff; border-color: var(--accent); }
+
+/* --------------------------------------------------------- Changes */
+
+.changes-group-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.changes-toggle {
+  background: none;
+  border: none;
+  color: var(--text);
+  font-weight: 700;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  padding: 2px 0;
+}
+
+.file-group-dir {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-faint);
+  padding: 6px 4px 2px;
+}
+
+.file-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.file-row:hover {
+  background: var(--bg-elev-2);
+}
+
+.file-row.is-selected {
+  background: color-mix(in srgb, var(--accent) 25%, transparent);
+}
+
+.file-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+.file-old {
+  color: var(--text-faint);
+  font-style: normal;
+}
+
+.file-stats {
+  display: flex;
+  gap: 5px;
+  font-family: var(--mono);
+  font-size: 11px;
+}
+
+.status-cell {
+  flex: 0 0 20px;
+  width: 20px;
+  height: 18px;
+  border: none;
+  border-radius: 3px;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  background: var(--bg-elev-2);
+  color: var(--text-faint);
+  padding: 0;
+}
+
+.status-cell.added { color: var(--added); }
+.status-cell.deleted { color: var(--deleted); }
+.status-cell.modified { color: var(--warning); }
+.status-cell.renamed { color: var(--purple); }
+.status-cell.conflicted { color: #fff; background: var(--deleted); }
+.status-cell.untracked { color: var(--text-dim); }
+
+.commit-box {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-soft);
+}
+
+.commit-message {
+  width: 100%;
+  resize: vertical;
+  font-family: var(--sans);
+  font-size: 12px;
+}
+
+.commit-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+/* -------------------------------------------------------------- Diff */
+
+.diff-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  word-break: break-all;
+}
+
+.hunk {
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.hunk-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  background: var(--bg-elev-2);
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.hunk-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 6px;
+}
+
+.diff-line {
+  display: flex;
+  align-items: baseline;
+  font-family: var(--mono);
+  font-size: 11px;
+  cursor: pointer;
+  white-space: pre;
+}
+
+.diff-line:hover {
+  background: color-mix(in srgb, var(--text) 7%, transparent);
+}
+
+.diff-line.ins { background: color-mix(in srgb, var(--added) 14%, transparent); }
+.diff-line.del { background: color-mix(in srgb, var(--deleted) 14%, transparent); }
+.diff-line.is-excluded { opacity: 0.32; text-decoration: line-through; }
+
+.diff-line .ln {
+  flex: 0 0 38px;
+  text-align: right;
+  padding-right: 6px;
+  color: var(--text-faint);
+  user-select: none;
+}
+
+.diff-line .origin {
+  flex: 0 0 14px;
+  text-align: center;
+  user-select: none;
+}
+
+.diff-line .code {
+  flex: 1 1 auto;
+  padding-right: 8px;
+  overflow-x: auto;
+}
+
+.diff-line.ins .origin { color: var(--added); }
+.diff-line.del .origin { color: var(--deleted); }
+
+/* --------------------------------------------------------- Branches */
+
+.field-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.field-row input[type='text'] {
+  flex: 1 1 120px;
+  min-width: 0;
+}
+
+.checkbox {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.filter {
+  width: 100%;
+}
+
+h3 {
+  margin: 8px 0 4px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-dim);
+}
+
+.branch-list,
+.stash-list,
+.remote-list,
+.reflog-list,
+.flow-list,
+.detail-files {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.branch {
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius);
+  padding: 6px 8px;
+  background: var(--bg-elev-2);
+}
+
+.branch.is-head {
+  border-color: var(--accent);
+}
+
+.branch-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  background: none;
+  border: none;
+  color: var(--text);
+  font-weight: 600;
+  font-size: 12px;
+  cursor: pointer;
+  padding: 0;
+  text-align: left;
+}
+
+.branch-meta,
+.stash-meta,
+.reflog-meta {
+  display: flex;
+  gap: 8px;
+  color: var(--text-faint);
+  font-size: 11px;
+  margin-top: 2px;
+  overflow: hidden;
+}
+
+.branch-meta span:nth-child(2) {
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.branch-actions,
+.stash-actions,
+.remote-actions,
+.detail-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+  flex-wrap: wrap;
+}
+
+/* Formulario de credenciales por remoto: se guardan en el llavero por host. */
+.creds-form {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+  padding: 8px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius);
+  background: var(--bg-elev-2);
+}
+
+.creds-form .badge {
+  flex: 0 0 auto;
+}
+
+.creds-form input[type='text'],
+.creds-form input[type='password'] {
+  flex: 1 1 90px;
+  min-width: 0;
+}
+
+.remote-creds {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px dashed var(--border-soft);
+}
+
+.remote-creds .badge {
+  flex: 0 0 auto;
+}
+
+.remote-creds input[type='text'],
+.remote-creds input[type='password'] {
+  flex: 1 1 90px;
+  min-width: 0;
+}
+
+.host-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 10px 0 6px;
+  font-size: 11px;
+}
+
+.host-chips-label {
+  color: var(--text-faint);
+  margin-right: 4px;
+}
+
+.host-chips button {
+  padding: 2px 8px;
+  font-size: 11px;
+  border-radius: 12px;
+  background: var(--bg-elev-2);
+  border: 1px solid var(--border-soft);
+}
+
+.host-chips button.is-active {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+/* ------------------------------------------------------- Stashes/remotos */
+
+.stash,
+.remote {
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius);
+  padding: 8px;
+  background: var(--bg-elev-2);
+}
+
+.stash-main,
+.remote-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.remote-url {
+  color: var(--text-faint);
+  word-break: break-all;
+  font-size: 11px;
+}
+
+/* ---------------------------------------------------------- Commit detail */
+
+.detail-header h2 {
+  margin: 0 0 6px;
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+.detail-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.detail-parents {
+  color: var(--warning);
+  font-size: 11px;
+  margin: 4px 0 0;
+}
+
+.detail-stats {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 6px 0;
+  border-top: 1px solid var(--border-soft);
+  border-bottom: 1px solid var(--border-soft);
+  font-size: 12px;
+}
+
+.detail-body,
+.detail-raw pre {
+  background: var(--bg);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius);
+  padding: 8px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 0;
+  max-height: 260px;
+  overflow: auto;
+}
+
+.detail-file {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  background: none;
+  border: none;
+  color: var(--text);
+  padding: 2px 4px;
+  border-radius: 4px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.detail-file:hover {
+  background: var(--bg-elev-2);
+}
+
+.detail-raw summary {
+  cursor: pointer;
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+/* --------------------------------------------------------------- Reflog */
+
+.reflog-entry {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  background: none;
+  border: none;
+  color: var(--text);
+  text-align: left;
+  padding: 4px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.reflog-entry:hover {
+  background: var(--bg-elev-2);
+}
+
+.reflog-msg {
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* --------------------------------------------------------------- Flow */
+
+.flow-config {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px 10px;
+  margin: 0;
+  font-size: 12px;
+}
+
+.flow-config dt {
+  color: var(--text-faint);
+}
+
+.flow-config dd {
+  margin: 0;
+  font-family: var(--mono);
+}
+
+.flow-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 3px 6px;
+  background: var(--bg-elev-2);
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+/* -------------------------------------------------------------- Welcome */
+
+.welcome {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  text-align: center;
+  padding: 40px;
+}
+
+.welcome h1 {
+  font-size: 40px;
+  margin: 0;
+  letter-spacing: 2px;
+  color: var(--accent);
+}
+
+.welcome p {
+  margin: 0;
+  max-width: 520px;
+}
+
+/* ----------------------------------------------------------- Elementos */
+
+button {
+  background: var(--bg-elev-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: var(--radius);
+  padding: 4px 10px;
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+button:hover:not(:disabled) {
+  background: var(--border-soft);
+  border-color: var(--text-faint);
+}
+
+button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+button.primary {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+
+button.primary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 82%, var(--text));
+}
+
+button.link {
+  background: none;
+  border: none;
+  color: var(--accent);
+  padding: 0 2px;
+  font-size: 11px;
+}
+
+button.link:hover:not(:disabled) {
+  background: none;
+  text-decoration: underline;
+}
+
+button.link.danger {
+  color: var(--deleted);
+}
+
+button.danger-outline {
+  border-color: var(--deleted);
+  color: var(--deleted);
+  background: none;
+}
+
+button.danger-outline:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--deleted) 16%, transparent);
+}
+
+input[type='text'],
+input[type='search'],
+input[type='password'],
+textarea {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: var(--radius);
+  padding: 5px 8px;
+  font-size: 12px;
+  font-family: inherit;
+}
+
+input:focus,
+textarea:focus,
+button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+
+input[type='checkbox'] {
+  accent-color: var(--accent-dim);
+}
+
+.ins { color: var(--added); }
+.del { color: var(--deleted); }
+
+.badge {
+  background: var(--border);
+  color: var(--text);
+  font-size: 9px;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 8px;
+  letter-spacing: 0.3px;
+}
+
+.badge-ahead { background: color-mix(in srgb, var(--added) 26%, transparent); color: var(--added); }
+.badge-behind { background: color-mix(in srgb, var(--accent) 26%, transparent); color: var(--accent); }
+.badge-warn { background: color-mix(in srgb, var(--warning) 26%, transparent); color: var(--warning); }
+.badge-conflict { background: var(--deleted); color: #fff; }
+
+.empty {
+  color: var(--text-faint);
+  padding: 16px;
+  text-align: center;
+}
+
+.hint {
+  color: var(--text-faint);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.hint code {
+  color: var(--text-dim);
+}
+
+.alert {
+  border-radius: var(--radius);
+  padding: 8px;
+  margin: 0;
+  font-size: 12px;
+}
+
+.alert-error {
+  background: color-mix(in srgb, var(--deleted) 16%, transparent);
+  border: 1px solid var(--deleted);
+  color: var(--deleted);
+}
+
+/* --------------------------------------------------------------- Toasts */
+
+.toasts {
+  position: fixed;
+  bottom: 16px;
+  right: 16px;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 460px;
+}
+
+.toast {
+  text-align: left;
+  padding: 8px 12px;
+  border-radius: var(--radius);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 50%);
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.toast-info {
+  background: var(--bg-elev-2);
+  border: 1px solid var(--border);
+}
+
+.toast-success {
+  background: color-mix(in srgb, var(--added) 16%, var(--bg-elev));
+  border: 1px solid var(--added);
+  color: color-mix(in srgb, var(--added) 70%, var(--text));
+}
+
+.toast-error {
+  background: color-mix(in srgb, var(--deleted) 16%, var(--bg-elev));
+  border: 1px solid var(--deleted);
+  color: color-mix(in srgb, var(--deleted) 70%, var(--text));
+}
+
+/* ---------------------------------------------------------- Scrollbars */
+
+::-webkit-scrollbar {
+  width: 11px;
+  height: 11px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 6px;
+  border: 3px solid var(--bg);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-faint);
+}
+/* ------------------------------------------------------- Panel de ajustes */
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgb(0 0 0 / 45%);
+  animation: fade-in 120ms ease-out;
+}
+
+.modal {
+  width: min(520px, 100%);
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 12px 32px rgb(0 0 0 / 35%);
+}
+
+.modal:focus {
+  outline: none;
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.modal-header h2 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.modal-body {
+  padding: 16px;
+  overflow-y: auto;
+}
+
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  padding: 12px 16px;
+  border-top: 1px solid var(--border-soft);
+}
+
+.icon-button {
+  padding: 2px 8px;
+  font-size: 18px;
+  line-height: 1.2;
+  color: var(--text-dim);
+  background: transparent;
+  border-color: transparent;
+}
+
+.icon-button:hover {
+  background: color-mix(in srgb, var(--text) 8%, transparent);
+  color: var(--text);
+}
+
+.settings-group + .settings-group {
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1px solid var(--border-soft);
+}
+
+.settings-label {
+  margin: 0 0 4px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-dim);
+}
+
+.settings-hint {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: var(--text-faint);
+}
+
+/* Selector segmentado: los tres botones comparten borde y radio contiguos. */
+.segmented {
+  display: flex;
+  margin-top: 10px;
+  padding: 3px;
+  gap: 3px;
+  background: var(--bg-elev-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.segmented-option {
+  flex: 1 1 0;
+  padding: 7px 10px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-dim);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 5px;
+}
+
+.segmented-option:hover:not(.is-active) {
+  background: color-mix(in srgb, var(--text) 7%, transparent);
+  color: var(--text);
+}
+
+.segmented-option.is-active {
+  color: var(--text);
+  background: var(--bg);
+  border-color: var(--border);
+  font-weight: 600;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .modal-overlay {
+    animation: none;
+  }
+}
+
+/* ------------------------------------------------------------ Terminal */
+
+/* Panel acoplado a la parte inferior, a todo el ancho de la ventana. */
+.terminal-panel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 auto;
+  min-height: 0;
+  background: var(--bg-elev);
+  border-top: 1px solid var(--border);
+}
+
+/* Tira de arrastre sobre el borde superior para cambiar la altura. */
+.terminal-resize {
+  position: absolute;
+  top: -3px;
+  left: 0;
+  right: 0;
+  height: 6px;
+  cursor: ns-resize;
+  z-index: 5;
+}
+
+.terminal-resize:hover,
+.terminal-resize:active {
+  background: color-mix(in srgb, var(--accent) 55%, transparent);
+}
+
+.terminal-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 0 0 auto;
+  height: 30px;
+  padding: 0 8px;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.terminal-title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--text-dim);
+}
+
+.terminal-cwd {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-faint);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.terminal-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+/* Sin padding ni borde aqui: FitAddon mide el padre y descuenta el relleno
+   del propio `.xterm`, de modo que cualquier cosa extra en el contenedor
+   desalinearia las filas y columnas. */
+.terminal-host {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.terminal-host .xterm {
+  height: 100%;
+  padding: 6px 8px;
+  box-sizing: border-box;
+}
