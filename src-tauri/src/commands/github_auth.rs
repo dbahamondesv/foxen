@@ -110,19 +110,27 @@ pub async fn github_poll_login(state: GitHubLoginState) -> AppResult<GitHubLogin
     auth.poll_for_token(&state).await
 }
 
-/// Guarda manualmente un token y obtiene la información del usuario.
+/// Guarda manualmente un token **validándolo contra la API** antes de tocar el llavero.
+///
+/// Un PAT inválido o con scopes insuficientes nunca debe quedar guardado como
+/// si fuese una sesión válida.
 #[tauri::command]
 pub async fn github_login_complete(
     token: String,
     username: Option<String>,
 ) -> AppResult<GitHubLoginResult> {
     let auth = GitHubAuth::new();
-    let user = auth.get_user_info(&token).await.ok();
-    let login_username = user
-        .as_ref()
-        .map(|u| u.login.clone())
-        .or(username)
-        .unwrap_or_else(|| "git".to_string());
+    let user = auth.get_user_info(&token).await?;
+
+    if let Some(given) = username.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+        if !given.eq_ignore_ascii_case(&user.login) {
+            return Err(AppError::authentication(format!(
+                "El usuario «{given}» no coincide con la cuenta del token (@{}).",
+                user.login
+            )));
+        }
+    }
+    let login_username = user.login.clone();
 
     crate::git::remote::store_credential(
         "github.com",
@@ -136,7 +144,7 @@ pub async fn github_login_complete(
         success: true,
         token: Some(token),
         username: Some(login_username),
-        user,
+        user: Some(user),
         error: None,
         error_description: None,
     })
@@ -155,13 +163,13 @@ pub async fn github_login_with_gh() -> AppResult<GitHubLoginResult> {
     })?;
 
     let auth = GitHubAuth::new();
-    let user = auth.get_user_info(&token).await.ok();
-    let username = user.as_ref().map(|u| u.login.clone());
+    let user = auth.get_user_info(&token).await?;
+    let username = user.login.clone();
 
     crate::git::remote::store_credential(
         "github.com",
         &crate::types::Credential {
-            username: username.clone().unwrap_or_else(|| "git".to_string()),
+            username: username.clone(),
             password: token.clone(),
         },
     )?;
@@ -169,8 +177,8 @@ pub async fn github_login_with_gh() -> AppResult<GitHubLoginResult> {
     Ok(GitHubLoginResult {
         success: true,
         token: Some(token),
-        username,
-        user,
+        username: Some(username),
+        user: Some(user),
         error: None,
         error_description: None,
     })

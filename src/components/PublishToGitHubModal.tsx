@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { confirm } from '@tauri-apps/plugin-dialog';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { useStore } from '../store/useAppStore';
+import { errorMessage } from '../lib/ipc';
 import type { GitHubRepo } from '../lib/types';
 
 export function PublishToGitHubModal() {
@@ -12,6 +13,11 @@ export function PublishToGitHubModal() {
   const remotes = useStore((s) => s.remotes);
   const githubUser = useStore((s) => s.githubUser);
   const loading = useStore((s) => s.loading);
+  const notify = useStore((s) => s.notify);
+
+  const openRepoUrl = (url: string) => {
+    openUrl(url).catch((err) => notify('error', errorMessage(err)));
+  };
 
   const currentRepo = repoId ? repositories.find((r) => r.id === repoId) : null;
   const defaultName = currentRepo?.name.trim().replace(/\s+/g, '-') || '';
@@ -131,7 +137,7 @@ export function PublishToGitHubModal() {
               <button
                 type="button"
                 className="primary"
-                onClick={() => void openUrl(published.htmlUrl)}
+                onClick={() => openRepoUrl(published.htmlUrl)}
               >
                 🌐 Ver en GitHub
               </button>

@@ -193,3 +193,29 @@ Verificación: cargo check/test OK (33 pass), tsc --noEmit OK, eslint OK, vite b
 `vite build`, `cargo check`, `cargo test --lib` (3+1 ignored),
 `cargo test --test git_integration` (33/33), `./build-deb.sh` →
 `Foxen_0.1.0_amd64.deb` (4.86 MiB).
+
+### Post-cierre: el botón «Ver en GitHub» no abría la página
+
+**Causa raíz**: en `tauri-plugin-opener` 2.7.0 el scope del comando y las URLs
+permitidas son permisos separados. La capability solo tenía `opener:allow-open-url`
+(habilita el comando *sin* scope) y faltaba `opener:allow-default-urls` (los
+patrones `https://*`), así que `open_url` devolvía `ForbiddenUrl` y el `void
+openUrl(...)` del frontend lo tragaba en silencio. **Todos** los `openUrl` del
+frontend estaban rotos (publicar, clonar, PAT, ajustes OAuth); solo funcionaba
+el navegador abierto desde Rust (`github_start_login`), que no pasa por IPC.
+
+**Arreglos**:
+- `capabilities/default.json`: añadido `opener:allow-default-urls`.
+- Los 7 `openUrl` del frontend ahora tienen `.catch(err => notify(...))` con
+  `errorMessage`: ningún fallo queda silencioso.
+- CSP: `img-src` acepta `https://avatars.githubusercontent.com` — el avatar de
+  GitHub (TopBar y modal de repos) estaba bloqueado y no cargaba.
+- `github_login_complete`: el PAT **se valida contra la API antes de guardarlo**
+  (antes un token inválido se guardaba con usuario `"git"` y devolvía éxito);
+  además comprueba que el usuario tecleado coincida con la cuenta del token.
+  Igual en `github_login_with_gh` y en el device flow (`poll_for_token`), que
+  ahora exige obtener el perfil antes de declarar sesión.
+
+**Verificación**: `cargo check` (schema regenerado con el permiso nuevo),
+`tsc`, `eslint`, `vitest` 32/32, `vite build`, `cargo test --lib` 3,
+`git_integration` 33/33, `.deb` regenerado.

@@ -52,7 +52,7 @@ export function GitHubAuthModal() {
       // Abrir navegador con la URL de verificación
       const targetUrl = state.verificationUriComplete || state.verificationUri;
       if (targetUrl) {
-        void openUrl(targetUrl).catch(() => undefined);
+        openUrl(targetUrl).catch((err) => notify('error', ipc.errorMessage(err)));
       }
 
       // Empezar a hacer polling
@@ -146,7 +146,7 @@ export function GitHubAuthModal() {
   const openBrowserAgain = () => {
     if (!loginState) return;
     const url = loginState.verificationUriComplete || loginState.verificationUri;
-    void openUrl(url);
+    openUrl(url).catch((err) => notify('error', ipc.errorMessage(err)));
   };
 
   const handleSaveClientId = () => {
@@ -162,11 +162,13 @@ export function GitHubAuthModal() {
 
   const openNewTokenPage = () => {
     const url = 'https://github.com/settings/tokens/new?description=Foxen%20Desktop&scopes=repo,read:user,user:email';
-    void openUrl(url);
+    openUrl(url).catch((err) => notify('error', ipc.errorMessage(err)));
   };
 
   const openOAuthSettingsPage = () => {
-    void openUrl('https://github.com/settings/developers');
+    openUrl('https://github.com/settings/developers').catch((err) =>
+      notify('error', ipc.errorMessage(err)),
+    );
   };
 
   const handleManualSave = async () => {

@@ -294,26 +294,25 @@ impl GitHubAuth {
             }
 
             if let Some(token) = token_response.access_token {
-                // Obtener perfil del usuario
-                let user_info = self.get_user_info(&token).await.ok();
-                let username = user_info.as_ref().map(|u| u.login.clone());
+                // Validar el token antes de declarar la sesión: sin perfil no hay
+                // nombre de usuario fiable con el que guardar la credencial.
+                let user_info = self.get_user_info(&token).await?;
+                let username = user_info.login.clone();
 
                 // Guardar en el llavero para github.com
-                if let Some(ref uname) = username {
-                    let _ = crate::git::remote::store_credential(
-                        "github.com",
-                        &crate::types::Credential {
-                            username: uname.clone(),
-                            password: token.clone(),
-                        },
-                    );
-                }
+                let _ = crate::git::remote::store_credential(
+                    "github.com",
+                    &crate::types::Credential {
+                        username: username.clone(),
+                        password: token.clone(),
+                    },
+                );
 
                 return Ok(GitHubLoginResult {
                     success: true,
                     token: Some(token),
-                    username,
-                    user: user_info,
+                    username: Some(username),
+                    user: Some(user_info),
                     error: None,
                     error_description: None,
                 });

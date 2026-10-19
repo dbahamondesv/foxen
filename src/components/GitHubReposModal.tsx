@@ -3,6 +3,7 @@ import { open } from '@tauri-apps/plugin-dialog';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { useStore } from '../store/useAppStore';
 import { relativeTime } from '../lib/format';
+import { errorMessage } from '../lib/ipc';
 import type { GitHubRepo } from '../lib/types';
 
 export function GitHubReposModal() {
@@ -166,7 +167,7 @@ export function GitHubReposModal() {
 
             <button
               type="button"
-              onClick={() => void openUrl('https://github.com/new')}
+              onClick={() => openUrl('https://github.com/new').catch((err) => notify('error', errorMessage(err)))}
               className="secondary"
               title="Crear un nuevo repositorio en GitHub"
             >
@@ -265,7 +266,7 @@ export function GitHubReposModal() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => void openUrl(repo.htmlUrl)}
+                      onClick={() => openUrl(repo.htmlUrl).catch((err) => notify('error', errorMessage(err)))}
                       className="secondary"
                       title="Ver en GitHub"
                     >
