@@ -4,10 +4,10 @@
 //! ejecuta en el hilo de la UI. Cada comando envuelve su trabajo en
 //! `spawn_blocking` y devuelve un `AppResult` serializable.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use tauri::State;
+use tauri::{AppHandle, State};
 
 use crate::error::{AppError, AppResult};
 use crate::git::{
@@ -15,6 +15,7 @@ use crate::git::{
 };
 use crate::git::repo::AppState;
 use crate::types::*;
+use crate::watch::WatchRegistry;
 
 // ---------------------------------------------------------------------------
 // Utilidades
@@ -63,7 +64,9 @@ macro_rules! with_repo_mut {
 
 #[tauri::command]
 pub async fn open_repository(
+    app: AppHandle,
     state: State<'_, AppState>,
+    watch: State<'_, WatchRegistry>,
     path: String,
     allow_bare: bool,
 ) -> AppResult<RepositoryOpenResult> {
@@ -73,7 +76,7 @@ pub async fn open_repository(
     // (sus mapas van tras `Arc`), asi que se clona antes de spawn_blocking.
     let handle_state = state.inner().clone();
     let path = PathBuf::from(path);
-    blocking("abrir repositorio", move || {
+    let result = blocking("abrir repositorio", move || {
         let state = &handle_state;
         if allow_bare {
             match state.open_repository(&path) {
@@ -87,27 +90,75 @@ pub async fn open_repository(
             state.open_repository(&path)
         }
     })
-    .await
+    .await?;
+
+    // Vigilancia con inotify: la UI se refresca sola ante cambios externos.
+    watch.watch(app, &result.handle.id, Path::new(&result.handle.path));
+    Ok(result)
 }
 
 #[tauri::command]
 pub async fn clone_repository(
+    app: AppHandle,
     state: State<'_, AppState>,
+    watch: State<'_, WatchRegistry>,
     url: String,
     path: String,
 ) -> AppResult<RepositoryOpenResult> {
     let handle_state = state.inner().clone();
     let dest = PathBuf::from(path);
-    blocking("clonar repositorio", move || {
+    let result = blocking("clonar repositorio", move || {
         remote::clone_repository(&url, &dest)?;
         handle_state.open_repository(&dest)
+    })
+    .await?;
+
+    watch.watch(app, &result.handle.id, Path::new(&result.handle.path));
+    Ok(result)
+}
+
+#[tauri::command]
+pub async fn close_repository(
+    state: State<'_, AppState>,
+    watch: State<'_, WatchRegistry>,
+    repo_id: String,
+) -> AppResult<()> {
+    state.close(&repo_id)?;
+    watch.unwatch(&repo_id);
+    Ok(())
+}
+
+/// Recoge la URL de un enlace `git://` recibido al arrancar (si la hay).
+///
+/// El frontend lo llama al montar: el enlace pudo llegar antes de que la webview
+/// estuviera lista para escuchar eventos.
+#[tauri::command]
+pub async fn take_pending_clone_url(
+    state: State<'_, crate::deeplink::PendingCloneUrl>,
+) -> AppResult<Option<String>> {
+    Ok(state.take())
+}
+
+// ---------------------------------------------------------------------------
+// Ajustes persistentes
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+pub async fn settings_load() -> AppResult<crate::settings::Settings> {
+    blocking("leer ajustes", crate::settings::load).await
+}
+
+#[tauri::command]
+pub async fn settings_save_session(session: crate::settings::Session) -> AppResult<()> {
+    blocking("guardar sesion", move || {
+        crate::settings::save_session(session)
     })
     .await
 }
 
 #[tauri::command]
-pub async fn close_repository(state: State<'_, AppState>, repo_id: String) -> AppResult<()> {
-    state.close(&repo_id)
+pub async fn settings_save_theme(theme: Option<String>) -> AppResult<()> {
+    blocking("guardar tema", move || crate::settings::save_theme(theme)).await
 }
 
 #[tauri::command]

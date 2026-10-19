@@ -130,6 +130,7 @@ export function TopBar() {
   const openGitHubLogin = useStore((s) => s.openGitHubLogin);
   const openGitHubRepos = useStore((s) => s.openGitHubRepos);
   const refreshGitHubUser = useStore((s) => s.refreshGitHubUser);
+  const refreshAll = useStore((s) => s.refreshAll);
 
   useEffect(() => {
     void refreshGitHubUser();
@@ -180,6 +181,16 @@ export function TopBar() {
           onChange={(e) => setHighlight(e.target.value)}
           disabled={!repoId}
         />
+        <button
+          type="button"
+          className="icon-button"
+          onClick={() => void refreshAll()}
+          disabled={!repoId || loading}
+          aria-label="Refrescar repositorio"
+          title="Refrescar estado (Ctrl+R / F5)"
+        >
+          ⟳
+        </button>
         <button type="button" onClick={fetchAll} disabled={!repoId || loading}>
           Fetch
         </button>

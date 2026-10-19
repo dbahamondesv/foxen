@@ -3,7 +3,7 @@
 import { create } from 'zustand';
 import * as ipc from '../lib/ipc';
 import { errorMessage } from '../lib/ipc';
-import { applyTheme, loadTheme, saveTheme, type Theme } from '../lib/theme';
+import { applyTheme, loadStoredTheme, loadTheme, saveTheme, type Theme } from '../lib/theme';
 import {
   clampColumnWidth,
   loadColumnWidths,
@@ -11,7 +11,7 @@ import {
   type ColumnKey,
   type ColumnWidths,
 } from '../lib/columns';
-import { loadSession, saveSession } from '../lib/session';
+import { currentSession, loadSession, saveSession } from '../lib/session';
 import type {
   BranchList,
   CommitDetail,
@@ -147,6 +147,8 @@ interface FoxenState {
   toggleTerminal: () => void;
   toggleSidebar: () => void;
   syncSystemTheme: () => void;
+  /** Carga el tema persistido en Rust (confirma la cache del primer pintado). */
+  hydrateTheme: () => Promise<void>;
   setCommitMessage: (message: string) => void;
   setGraphHighlight: (value: string) => void;
   setColumnWidth: (key: ColumnKey, width: number) => void;
@@ -165,14 +167,14 @@ let sessionRestored = false;
 
 /** Registra una ruta como abierta y la marca como activa en la sesion. */
 function rememberOpen(path: string): void {
-  const session = loadSession();
+  const session = currentSession();
   const paths = session.paths.includes(path) ? session.paths : [...session.paths, path];
   saveSession({ paths, active: path });
 }
 
 /** Quita una ruta de la sesion (al cerrar el repositorio). */
 function forgetOpen(path: string): void {
-  const session = loadSession();
+  const session = currentSession();
   const paths = session.paths.filter((p) => p !== path);
   saveSession({ paths, active: paths[0] ?? null });
 }
@@ -242,7 +244,7 @@ export const useStore = create<FoxenState>((set, get) => ({
     if (sessionRestored) return;
     sessionRestored = true;
 
-    const session = loadSession();
+    const session = await loadSession();
     if (session.paths.length === 0) return;
 
     set({ loading: true });
@@ -621,6 +623,12 @@ export const useStore = create<FoxenState>((set, get) => ({
   syncSystemTheme: () => {
     const { theme } = get();
     if (theme === 'system') set({ resolvedTheme: applyTheme(theme) });
+  },
+
+  hydrateTheme: async () => {
+    const theme = await loadStoredTheme();
+    if (!theme || theme === get().theme) return;
+    set({ theme, resolvedTheme: applyTheme(theme) });
   },
 
   setCommitMessage: (commitMessage) => set({ commitMessage }),

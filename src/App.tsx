@@ -10,9 +10,24 @@ import { GitHubAuthModal } from './components/GitHubAuthModal';
 import { GitHubReposModal } from './components/GitHubReposModal';
 import { PublishToGitHubModal } from './components/PublishToGitHubModal';
 import { useStore } from './store/useAppStore';
+import * as ipc from './lib/ipc';
 import { useEffect } from 'react';
 import { onSystemThemeChange } from './lib/theme';
 import { open } from '@tauri-apps/plugin-dialog';
+import { join } from '@tauri-apps/api/path';
+
+/** Nombre de carpeta sugerido a partir de una URL de clonado. */
+function repoNameFromUrl(url: string): string {
+  try {
+    const parsed = new URL(url);
+    const last = parsed.pathname.replace(/\/+$/, '').split('/').pop() ?? '';
+    const name = last.replace(/\.git$/i, '');
+    if (name) return name;
+  } catch {
+    // URL no parseable: se usa el nombre generico.
+  }
+  return 'repositorio';
+}
 
 export default function App() {
   const repoId = useStore((s) => s.repoId);
@@ -39,10 +54,104 @@ export default function App() {
   // del SO con la app abierta.
   useEffect(() => onSystemThemeChange(() => syncSystemTheme()), [syncSystemTheme]);
 
+  // El primer pintado usa la cache; el backend confirma el tema persistido.
+  useEffect(() => {
+    void useStore.getState().hydrateTheme();
+  }, []);
+
   // Reabre los repositorios que quedaron abiertos en la sesion anterior.
   useEffect(() => {
     void restoreSession();
   }, [restoreSession]);
+
+  // El backend vigila el repositorio con inotify: cualquier cambio externo
+  // (git en una terminal, un rebase, un editor...) refresca la UI sola.
+  useEffect(() => {
+    let timer: number | undefined;
+    let unlisten: (() => void) | undefined;
+    const schedule = () => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => {
+        const state = useStore.getState();
+        if (state.repoId) void state.refreshAll();
+      }, 200);
+    };
+    void ipc
+      .onGitChanged((id) => {
+        if (id === useStore.getState().repoId) schedule();
+      })
+      .then((fn) => {
+        unlisten = fn;
+      });
+    return () => {
+      window.clearTimeout(timer);
+      unlisten?.();
+    };
+  }, []);
+
+  // Las ediciones del arbol de trabajo no tocan `.git`: al volver a la ventana
+  // se refresca igualmente (cubre ademas sistemas sin inotify disponible).
+  useEffect(() => {
+    let timer: number | undefined;
+    const onFocus = () => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => {
+        const state = useStore.getState();
+        if (state.repoId) void state.refreshAll();
+      }, 500);
+    };
+    window.addEventListener('focus', onFocus);
+    return () => {
+      window.removeEventListener('focus', onFocus);
+      window.clearTimeout(timer);
+    };
+  }, []);
+
+  // Refresco manual. F5 recargaria el webview y Ctrl+R tambien, asi que se
+  // interceptan para refrescar el repositorio en su lugar.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      const wantsRefresh =
+        (event.ctrlKey && !event.shiftKey && !event.altKey && event.key.toLowerCase() === 'r') ||
+        event.key === 'F5';
+      if (!wantsRefresh) return;
+      event.preventDefault();
+      const state = useStore.getState();
+      if (state.repoId) void state.refreshAll();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
+  // Enlaces git://: xdg-open lanza Foxen con la URL (primer arranque) o la pasa
+  // a la instancia abierta. Se pide la carpeta destino y se clona.
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    const startClone = async (url: string) => {
+      try {
+        const parent = await open({
+          directory: true,
+          multiple: false,
+          title: 'Elegir carpeta donde clonar',
+        });
+        if (typeof parent !== 'string') return;
+        const dest = await join(parent, repoNameFromUrl(url));
+        await useStore.getState().cloneAndOpen(url, dest);
+      } catch (error) {
+        useStore.getState().notify('error', ipc.errorMessage(error));
+      }
+    };
+    const drain = () => {
+      void ipc.takePendingCloneUrl().then((url) => {
+        if (url) void startClone(url);
+      });
+    };
+    drain();
+    void ipc.onCloneRequest(drain).then((fn) => {
+      unlisten = fn;
+    });
+    return () => unlisten?.();
+  }, []);
 
   const handleBrowseLocal = async () => {
     try {

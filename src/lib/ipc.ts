@@ -8,6 +8,7 @@
  */
 
 import { Channel, invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
 import type {
   AppError,
   BranchComparison,
@@ -493,3 +494,49 @@ export const githubPublishRepo = (
     replaceOrigin,
   });
 
+// ---------------------------------------------------------------------------
+// Eventos del backend
+// ---------------------------------------------------------------------------
+
+/**
+ * Escucha los cambios detectados por el watcher (inotify) del backend.
+ *
+ * Devuelve la funcion para dejar de escuchar. El `repoId` permite ignorar
+ * repositorios que no estan activos en la UI.
+ */
+export const onGitChanged = (handler: (repoId: string) => void) =>
+  listen<{ repoId: string }>('git://changed', (event) => handler(event.payload.repoId));
+
+/**
+ * Recoge la URL de clonado recibida al arrancar (enlace `git://` de xdg-open).
+ *
+ * Se usa al montar porque el enlace puede llegar antes de que la webview
+ * empiece a escuchar eventos.
+ */
+export const takePendingCloneUrl = () => call<string | null>('take_pending_clone_url');
+
+/** Escucha enlaces `git://` recibidos con la app ya abierta (segunda instancia). */
+export const onCloneRequest = (handler: (url: string) => void) =>
+  listen<{ url: string }>('git://clone-request', (event) => handler(event.payload.url));
+
+// ---------------------------------------------------------------------------
+// Ajustes persistentes (settings.json en el directorio de configuracion)
+// ---------------------------------------------------------------------------
+
+export interface StoredSession {
+  paths: string[];
+  active: string | null;
+}
+
+export interface StoredSettings {
+  session: StoredSession;
+  theme: string | null;
+}
+
+export const settingsLoad = () => call<StoredSettings>('settings_load');
+
+export const settingsSaveSession = (session: StoredSession) =>
+  call<void>('settings_save_session', { session });
+
+export const settingsSaveTheme = (theme: string) =>
+  call<void>('settings_save_theme', { theme });

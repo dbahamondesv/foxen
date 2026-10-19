@@ -4,11 +4,14 @@
 //! `main()` por `mobile_entry_point` en compilaciones moviles.
 
 pub mod commands;
+pub mod deeplink;
 pub mod error;
 pub mod git;
 pub mod pty;
+pub mod settings;
 pub mod terminal;
 pub mod types;
+pub mod watch;
 
 use error::AppError;
 use git::repo::AppState;
@@ -22,17 +25,24 @@ pub fn run() {
     tauri::Builder::default()
         // Debe ser el primer plugin: intercepta el arranque de la segunda
         // instancia para que la ventana existente reciba los argumentos.
-        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
-            use tauri::Manager;
+        .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+            use tauri::{Emitter, Manager};
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.set_focus();
                 let _ = window.unminimize();
+            }
+            // La segunda instancia puede traer un enlace git:// (xdg-open).
+            if let Some(url) = deeplink::clone_url_from_args(argv) {
+                app.state::<deeplink::PendingCloneUrl>().set(url.clone());
+                let _ = app.emit(deeplink::CLONE_REQUEST_EVENT, serde_json::json!({ "url": url }));
             }
         }))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         // En Tauri 2 el estado se registra en el builder, no en `setup`.
         .manage(AppState::new())
+        .manage(watch::WatchRegistry::default())
+        .manage(deeplink::PendingCloneUrl::default())
         .manage(pty::PtyState::default())
         .setup(|app| {
             env_logger::Builder::from_env(
@@ -42,6 +52,11 @@ pub fn run() {
             .ok();
 
             use tauri::Manager;
+            // Primer arranque con un enlace (xdg-open): queda pendiente hasta
+            // que el frontend lo recoja con `take_pending_clone_url`.
+            if let Some(url) = deeplink::clone_url_from_args(std::env::args().skip(1)) {
+                app.state::<deeplink::PendingCloneUrl>().set(url);
+            }
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.set_title("Foxen");
             }
@@ -52,6 +67,10 @@ pub fn run() {
             commands::open_repository,
             commands::clone_repository,
             commands::close_repository,
+            commands::take_pending_clone_url,
+            commands::settings_load,
+            commands::settings_save_session,
+            commands::settings_save_theme,
             commands::list_repositories,
             commands::recent_repositories,
             commands::scan_for_repositories,
