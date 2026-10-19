@@ -1,6 +1,10 @@
 /**
- * Preview temporal para inspeccion visual (grafo y panel de remotos).
- * No forma parte de la aplicacion: se borra tras la verificacion.
+ * Herramienta de inspeccion visual (grafo, panel de remotos, ajustes).
+ *
+ * No forma parte de la aplicacion: vive en `preview.html` y se usa para
+ * revisar estilos y layout sin levantar Tauri. Arranca con:
+ *   npx vite --open /preview.html
+ * Parametros utiles: `?panel=remotes`, `?settings`, `?theme=light`.
  */
 import { createRoot } from 'react-dom/client';
 import { mockIPC } from '@tauri-apps/api/mocks';
@@ -197,6 +201,9 @@ function renderRemotesPreview() {
         error: null,
         errorDescription: null,
       };
+    }
+    if (cmd === 'github_device_flow_configured') {
+      return false;
     }
     if (cmd === 'github_list_repos') {
       return [
