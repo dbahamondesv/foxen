@@ -25,16 +25,37 @@ Git Flow, terminal embebida y publicación directa a GitHub.
   **publicar** el repositorio actual (crea el repo, configura `origin` y
   hace push con upstream).
 - **Sesión persistente**: reabre los repositorios que tenías al cerrar.
+- **Preferencias en Rust**: sesión y tema se guardan en
+  `~/.config/foxen/settings.json` (escritura atómica), no en el webview.
+- **Refresco automático**: un watcher de kernel (inotify) detecta cambios en el
+  repositorio hechos desde fuera (terminal, otro editor) y actualiza la UI;
+  también al recuperar el foco de la ventana y con el botón ⟳, **Ctrl+R** o
+  **F5**.
+- **Enlaces `git://`**: `git://…` (y `ssh://`/`https://…*.git`) abren Foxen y
+  ofrecen clonar el repositorio.
 - **Tema claro/oscuro** (sigue al sistema por defecto).
 - Diseñada como app de escritorio: sin menús ni atajos de navegador.
 
-## Requisitos
+## Requisitos y compatibilidad
 
-- Linux con `libwebkit2gtk-4.1` (Windows y macOS funcionan vía Tauri, sin
-  empaquetado configurado todavía).
-- Node.js 20+ y Rust 1.77+ (solo para compilar).
-- Opcional: [GitHub CLI](https://cli.github.com/) (`gh`) autenticada para
-  usar Git sin tocar credenciales.
+Los paquetes usan **glibc ≤ 2.34**, así que funcionan en cualquier distribución
+con WebKitGTK 4.1 y GTK 3 (lo exige Tauri 2):
+
+| Distribución | Mínimo | Paquete de WebKitGTK |
+| --- | --- | --- |
+| Debian | 12 (bookworm) | `libwebkit2gtk-4.1-0` |
+| Ubuntu | 23.04 | `libwebkit2gtk-4.1-0` |
+| Fedora | 38 | `webkit2gtk4.1` |
+| Arch | rolling | `webkit2gtk-4.1` |
+
+Ubuntu 22.04 y Debian 11 **no** sirven: no empaquetan `webkit2gtk-4.1`.
+Se asume OpenSSL 3 (predeterminado en las versiones anteriores). Para compilar:
+Node.js 20+ y Rust 1.77+.
+
+Opcional: [GitHub CLI](https://cli.github.com/) (`gh`) autenticada para usar Git
+sin tocar credenciales. En entornos **headless** (sin Secret Service/gnome-keyring)
+el llavero no está disponible: Foxen degrada a mantener los tokens en memoria
+durante la sesión y a los helpers de `git`/`gh`, sin guardarlos en disco.
 
 ## Compilar y ejecutar
 
@@ -44,11 +65,16 @@ npm install
 # Desarrollo (recarga en caliente)
 npm run tauri:dev
 
-# Producción
-npm run tauri:build
-
-# Paquete .deb para Debian/Ubuntu
+# Paquete .deb nativo (usa el toolchain del sistema)
 ./build-deb.sh
+
+# Paquetes multi-distro (deb + rpm + AppImage) en un contenedor aislado
+./build-in-container.sh          # docker o podman; salida en dist/packages/
+./build-in-container.sh deb      # solo lo que pidas (deb, rpm, appimage)
+
+# Flatpak (a partir del .deb anterior); usa el flatpak-builder del sistema o
+# prepara uno portable sin root en .flatpak-tools/
+./build-flatpak.sh               # genera foxen.flatpak e instala con --user
 ```
 
 ## Autenticación con GitHub
@@ -76,7 +102,12 @@ src-tauri/src/        Backend Rust
   commands/           Comandos IPC (frontera única con el frontend)
   git/                Lógica Git sobre libgit2 (grafo, staging, remotos…)
   pty.rs/terminal.rs  Terminal embebida y del sistema
-packaging/            .desktop, metainfo AppStream y flatpak
+  settings.rs         Preferencias persistentes (sesión + tema)
+  watch.rs            Watcher inotify con debounce (evento git://changed)
+  deeplink.rs         Enlaces git:// (clonado desde el navegador)
+packaging/            .desktop, metainfo AppStream y manifiesto flatpak
+build-in-container.sh Paquetes multi-distro (deb/rpm/AppImage)
+build-flatpak.sh      Flatpak a partir del .deb
 ```
 
 ## Desarrollo

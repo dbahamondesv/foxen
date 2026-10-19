@@ -219,3 +219,89 @@ el navegador abierto desde Rust (`github_start_login`), que no pasa por IPC.
 **Verificación**: `cargo check` (schema regenerado con el permiso nuevo),
 `tsc`, `eslint`, `vitest` 32/32, `vite build`, `cargo test --lib` 3,
 `git_integration` 33/33, `.deb` regenerado.
+
+## 2026-10-19
+
+### Cierre v0.1.0 — Parte 2 (kernel, Rust y multi-distro)
+
+Plan: `PLAN-CIERRE-v0.1.0-PARTE2.md`. Objetivo: exprimir Rust, aprovechar el
+kernel moderno y publicar paquetes que funcionen en más de una distribución.
+
+#### Fase A — Refresco automático (inotify)
+- Dependencia `notify` 8.2 (backend **inotify** en Linux).
+- `src-tauri/src/watch.rs`: `WatchRegistry` con un watcher recursivo por repo;
+  si se agotan los watches, degrada a vigilar solo `.git`. Debounce
+  *trailing-edge* de 250 ms por repo, se ignoran los eventos `Access` (no
+  cambian el estado) y se emite `git://changed` con `{ repoId }`.
+- Enganchado en `open_repository`/`clone_repository` (registra) y
+  `close_repository` (desregistra); el `drop` del watcher termina su tarea.
+- Frontend: listener de `git://changed` con debounce de 200 ms sobre
+  `refreshAll()`, refresco al recuperar el foco (500 ms) y botón ⟳ en la barra
+  superior + atajos **Ctrl+R**/**F5**.
+
+#### Fase B — Multi-distro
+- `build-in-container.sh`: construye **deb + rpm + AppImage** dentro de
+  `node:22-bookworm` (Debian 12, glibc 2.36) con docker o podman, volúmenes de
+  caché para cargo/rustup/npm/target, etapa temporal aislada y copia de solo los
+  tipos pedidos a `dist/packages/`. Verifica con `readelf -V` que el binario no
+  exija más de GLIBC 2.36; en la práctica exige **2.34**.
+- **Corrección de plan**: `ubuntu:22.04` no es viable, no empaqueta
+  `webkit2gtk-4.1` (lo exige Tauri 2). Mínimos reales: Debian 12+/Ubuntu 23.04+.
+- `tauri.conf.json`: se eliminan los `depends` explícitos (el deb los duplicaba
+  y el rpm ya autogenera los sonames correctos).
+- Un `.desktop` y un metainfo únicos, con el **id de la app**
+  (`com.foxbuntu.foxen`): requisito de Flatpak (`non-allowed export filename`)
+  y del `<launchable>` de AppStream. El deb renombra `Foxen.desktop` en un
+  post-proceso (`packaging/postprocess-deb.sh`, regenera `md5sums` e
+  `Installed-Size`); el rpm usa una plantilla `NoDisplay` para el `.desktop`
+  oculto y aporta el canónico por `files`; el AppImage acepta el nombre libre.
+
+#### Fase C — Flatpak
+- Manifiesto a runtime **GNOME 50**; se construye a partir del **.deb del
+  contenedor** (glibc baja y determinista).
+- `org.flatpak.Builder` no sirve en esta máquina: su sandbox no ve los runtimes
+  de usuario. Solución sin root, encapsulada en `build-flatpak.sh`: usa el
+  `flatpak-builder` del sistema si existe y, si no, prepara uno portable en
+  `.flatpak-tools/` (extraído con `apt-get download` + `dpkg -x`) y aporta
+  `appstreamcli-compose` (ruta fija `/usr/libexec`) con `unshare -rm` + bind
+  mount.
+- Instalado `--user`: se exportan `com.foxbuntu.foxen.desktop`, los iconos
+  `com.foxbuntu.foxen.png` (32/128/512) y el metainfo.
+
+#### Fase D — Enlaces `git://`
+- `src-tauri/src/deeplink.rs`: normaliza `git://`, `ssh://` y `http(s)://…*.git`
+  con `url::Url`; URL pendiente en estado + comando `take_pending_clone_url`.
+- Primer arranque: se consume al montar el frontend. Segundo arranque
+  (single-instance): evento `git://clone-request`. El frontend pide carpeta y
+  lanza `cloneAndOpen`. Queda justificado el `x-scheme-handler/git`.
+
+#### Fase E — Preferencias en Rust
+- `src-tauri/src/settings.rs`: `~/.config/foxen/settings.json` con escritura
+  atómica (tmp + rename) y recuperación ante archivo corrupto.
+- Comandos `settings_load` / `settings_save_session` / `settings_save_theme`.
+- `session.ts` y `theme.ts` pasan a leer/escribir vía Rust, con migración única
+  desde `localStorage`. La caché de tema en `localStorage` se conserva solo para
+  el primer pintado (evita el parpadeo); la de sesión se limpia tras migrar.
+
+#### Decisiones de kernel (no implementadas a propósito)
+- **io_uring**: sin beneficio real; libgit2 hace lecturas síncronas (ya en
+  `spawn_blocking`) y `reqwest` es async.
+- **fanotify**: exige `CAP_SYS_ADMIN`, inaceptable en una app de usuario.
+- **pidfd**: marginal; `portable-pty` ya gestiona los procesos hijos.
+- **inotify** (≥ 2.6.13, sin privilegios): elegido, con degradación elegante.
+
+#### Verificación
+- `cargo check`, `cargo test --lib` (9 + 1 ignored), `cargo test --test
+  git_integration` (33), `tsc --noEmit`, `eslint --max-warnings 0`, `vitest`
+  (35) y `vite build`: **todo verde**.
+- Paquetes: deb 3,8 MB, rpm 5,3 MB, AppImage 102 MB; flatpak 11,3 MB. GLIBC
+  máxima exigida: **2.34**.
+- Artefactos verificados: `dpkg-deb -c` (desktop con id de app, iconos,
+  metainfo), `rpm -qlp`/`-qRp` (sonames), `--appimage-extract`, y `flatpak
+  install --user`.
+
+#### Incidencias
+- `build-in-container.sh` devolvía `SIGPIPE` (141) de forma esporádica antes de
+  arrancar el contenedor; se añadió un reintento acotado.
+- El post-proceso del deb comprime con `xz`; el módulo flatpak pasa a usar
+  `tar -xf data.tar.*` en lugar de asumir `.gz`.
