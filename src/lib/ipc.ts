@@ -455,6 +455,10 @@ export const githubLoginComplete = (token: string, username: string | null = nul
 /** Inicia sesión reutilizando la sesión de la GitHub CLI (`gh`). */
 export const githubLoginWithGh = () => call<GitHubLoginResult>('github_login_with_gh');
 
+/** Dice si el Device Flow está configurado (Client ID en el entorno). */
+export const githubDeviceFlowConfigured = () =>
+  call<boolean>('github_device_flow_configured');
+
 /** Obtiene el usuario autenticado en GitHub si hay credencial guardada. */
 export const githubGetUser = () => call<GitHubUser | null>('github_get_user');
 
@@ -463,4 +467,29 @@ export const githubLogout = () => call<void>('github_logout');
 
 /** Lista los repositorios del usuario autenticado en GitHub. */
 export const githubListRepos = () => call<GitHubRepo[]>('github_list_repos');
+
+/** Crea un repositorio vacío en la cuenta personal o de una organización. */
+export const githubCreateRepo = (
+  name: string,
+  isPrivate: boolean,
+  description: string | null,
+  owner: string | null,
+) => call<GitHubRepo>('github_create_repo', { name, private: isPrivate, description, owner });
+
+export const githubPublishRepo = (
+  repoId: string,
+  name: string,
+  isPrivate: boolean,
+  description: string | null,
+  owner: string | null,
+  replaceOrigin = false,
+) =>
+  call<GitHubRepo>('github_publish_repo', {
+    repoId,
+    name,
+    private: isPrivate,
+    description,
+    owner,
+    replaceOrigin,
+  });
 

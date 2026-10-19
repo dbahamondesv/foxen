@@ -15,7 +15,66 @@ const GITHUB_DEVICE_CODE_URL: &str = "https://github.com/login/device/code";
 const GITHUB_TOKEN_URL: &str = "https://github.com/login/oauth/access_token";
 const GITHUB_USER_URL: &str = "https://api.github.com/user";
 const GITHUB_REPOS_URL: &str = "https://api.github.com/user/repos";
-const DEFAULT_CLIENT_ID: &str = "Ov23liMcveN7uGz5wzFz";
+
+/// Variable de entorno con el Client ID de la OAuth App de GitHub.
+///
+/// Sin ella el Device Flow no puede funcionar: GitHub exige un Client ID
+/// propio con «Enable Device Flow» activado. Foxen no lleva un Client ID
+/// embebido porque el de la app de desarrollo devolvio HTTP 404 ( OAuth App
+/// inexistente o sin device flow habilitado).
+const CLIENT_ID_ENV: &str = "FOXEN_GITHUB_CLIENT_ID";
+
+/// Client ID configurado en el entorno, si lo hay.
+fn env_client_id() -> Option<String> {
+    std::env::var(CLIENT_ID_ENV)
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+}
+
+/// `true` si el Device Flow esta configurado (existe Client ID en el entorno).
+pub fn device_flow_configured() -> bool {
+    env_client_id().is_some()
+}
+
+/// Valida un nombre de repositorio segun las reglas de GitHub.
+///
+/// GitHub admite letras, digitos, `-`, `_` y `.`, con longitud 1-100 y sin
+/// empezar ni terminar en `.`, ni empezar por `-`, ni ser solo `.`/`..`.
+fn validate_repo_name(name: &str) -> AppResult<()> {
+    if name.is_empty() {
+        return Err(AppError::validation("El nombre del repositorio esta vacio"));
+    }
+    if name.len() > 100 {
+        return Err(AppError::validation(
+            "El nombre del repositorio no puede superar los 100 caracteres",
+        ));
+    }
+    if name == "." || name == ".." {
+        return Err(AppError::validation(
+            "El nombre del repositorio no puede ser «.» ni «..»",
+        ));
+    }
+    if name.starts_with('-') {
+        return Err(AppError::validation(
+            "El nombre del repositorio no puede empezar por «-»",
+        ));
+    }
+    if name.starts_with('.') || name.ends_with('.') {
+        return Err(AppError::validation(
+            "El nombre del repositorio no puede empezar ni terminar por «.»",
+        ));
+    }
+    if !name
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
+    {
+        return Err(AppError::validation(
+            "El nombre del repositorio solo admite letras, digitos, «-», «_» y «.»",
+        ));
+    }
+    Ok(())
+}
 
 /// Lee un token ya autenticado desde la GitHub CLI (`gh auth token`).
 ///
@@ -60,9 +119,20 @@ impl GitHubAuth {
         Self::default()
     }
 
-    fn client_id() -> String {
-        std::env::var("FOXEN_GITHUB_CLIENT_ID")
-            .unwrap_or_else(|_| DEFAULT_CLIENT_ID.to_string())
+    /// Client ID a usar: el pasado explicitamente o el del entorno.
+    fn resolve_client_id(custom: Option<String>) -> AppResult<String> {
+        custom
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .or_else(env_client_id)
+            .ok_or_else(|| {
+                AppError::validation(
+                    "El inicio de sesión en el navegador no está configurado: \
+                     define FOXEN_GITHUB_CLIENT_ID con el Client ID de tu OAuth App \
+                     (con «Enable Device Flow» activado), o inicia sesión con la \
+                     GitHub CLI (gh) o un Personal Access Token.",
+                )
+            })
     }
 
     /// Solicita un device code a GitHub.
@@ -70,9 +140,7 @@ impl GitHubAuth {
         &self,
         custom_client_id: Option<String>,
     ) -> AppResult<GitHubLoginState> {
-        let client_id = custom_client_id
-            .filter(|s| !s.trim().is_empty())
-            .unwrap_or_else(|| Self::client_id());
+        let client_id = Self::resolve_client_id(custom_client_id)?;
 
         let params = [
             ("client_id", client_id.as_str()),
@@ -124,7 +192,13 @@ impl GitHubAuth {
         let client_id = state
             .client_id
             .clone()
-            .unwrap_or_else(|| Self::client_id());
+            .filter(|s| !s.trim().is_empty())
+            .or_else(env_client_id)
+            .ok_or_else(|| {
+                AppError::validation(
+                    "El Client ID del Device Flow ya no está disponible (¿se reinició la app?).",
+                )
+            })?;
         let start = Instant::now();
         let expires_in = Duration::from_secs(state.expires_in);
         let mut poll_interval = Duration::from_millis(state.poll_interval_ms.max(5000));
@@ -273,6 +347,65 @@ impl GitHubAuth {
             .map_err(|e| AppError::internal(format!("Error parseando usuario: {e}")))?;
 
         Ok(user)
+    }
+
+    /// Crea un repositorio en GitHub.
+    ///
+    /// Sin `owner` crea el repositorio en la cuenta del usuario; con `owner`
+    /// (una organizacion) lo crea en `POST /orgs/{owner}/repos`.
+    pub async fn create_repo(
+        &self,
+        token: &str,
+        name: &str,
+        private: bool,
+        description: Option<&str>,
+        owner: Option<&str>,
+    ) -> AppResult<GitHubRepo> {
+        let name = name.trim();
+        validate_repo_name(name)?;
+
+        let url = match owner.map(str::trim).filter(|o| !o.is_empty()) {
+            Some(owner) => format!("https://api.github.com/orgs/{owner}/repos"),
+            None => GITHUB_REPOS_URL.to_string(),
+        };
+
+        let mut body = serde_json::json!({
+            "name": name,
+            "private": private,
+            // El primer push trae el historial local; no dejar que GitHub cree uno.
+            "auto_init": false,
+        });
+        if let Some(description) = description.map(str::trim).filter(|d| !d.is_empty()) {
+            body["description"] = serde_json::Value::String(description.to_string());
+        }
+
+        let response = self
+            .client
+            .post(&url)
+            .header("Accept", "application/vnd.github.v3+json")
+            .header("Authorization", format!("Bearer {token}"))
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| AppError::network(format!("Error creando el repositorio: {e}")))?;
+
+        let status = response.status();
+        if status.as_u16() == 422 {
+            return Err(AppError::validation(format!(
+                "Ya existe un repositorio llamado «{name}» en tu cuenta de GitHub, o el nombre no es valido"
+            )));
+        }
+        if !status.is_success() {
+            let body = response.text().await.unwrap_or_default();
+            return Err(AppError::internal(format!(
+                "Error HTTP {status} al crear el repositorio: {body}"
+            )));
+        }
+
+        response
+            .json::<GitHubRepo>()
+            .await
+            .map_err(|e| AppError::internal(format!("Error parseando el repositorio creado: {e}")))
     }
 
     /// Lista los repositorios del usuario en GitHub (ordenados por última modificación).

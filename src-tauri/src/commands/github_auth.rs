@@ -1,8 +1,86 @@
 //! Comandos Tauri para autenticación y operaciones con GitHub.
 
+use tauri::State;
+
 use crate::error::{AppError, AppResult};
 use crate::git::github_auth::GitHubAuth;
+use crate::git::repo::AppState;
 use crate::types::{GitHubLoginResult, GitHubLoginState, GitHubRepo, GitHubUser};
+
+/// Token de GitHub activo: primero el llavero de Foxen, luego la CLI `gh`.
+fn github_token() -> AppResult<String> {
+    if let Some(cred) = crate::git::remote::lookup_credential("github.com") {
+        if !cred.password.is_empty() {
+            return Ok(cred.password);
+        }
+    }
+    crate::git::github_auth::token_from_gh().ok_or_else(|| {
+        AppError::authentication(
+            "No hay sesión de GitHub. Inicia sesión en Foxen o ejecuta `gh auth login` en una terminal.",
+        )
+    })
+}
+
+/// Prepara el remoto `origin` con la URL del repositorio recién creado y hace
+/// push de la rama actual fijando su upstream.
+///
+/// Si ya existe un `origin` con otra URL, solo se sobreescribe si
+/// `replace_origin` es `true`: pisar el remoto sin avisar deja al usuario sin
+/// forma de saber a qué servidor apunta su repositorio.
+///
+/// Las credenciales del push las resuelve `remote::push` desde el llavero.
+fn publish_remote_and_push(
+    repo: &git2::Repository,
+    clone_url: &str,
+    replace_origin: bool,
+) -> AppResult<()> {
+    let head = repo.head().map_err(|_| {
+        AppError::invalid_state(
+            "El repositorio no tiene commits todavía. Crea el primero antes de publicar.",
+        )
+    })?;
+    if !head.is_branch() {
+        return Err(AppError::invalid_state(
+            "HEAD está desligado; cámbiate a una rama antes de publicar.",
+        ));
+    }
+    let branch = head
+        .shorthand()
+        .map(|s| s.to_string())
+        .ok_or_else(|| AppError::invalid_state("No se pudo determinar la rama actual."))?;
+
+    if let Ok(existing) = repo.find_remote("origin") {
+        let current_url = existing.url().unwrap_or_default().to_string();
+        if current_url != clone_url && !replace_origin {
+            return Err(AppError::invalid_state(format!(
+                "El remoto «origin» ya apunta a «{current_url}»."
+            ))
+            .with_detail(
+                "Publicar sobreescribirá la URL de origin con la del repositorio creado. \
+                 Confirma el reemplazo para continuar.",
+            ));
+        }
+        repo.remote_set_url("origin", clone_url)
+            .map_err(AppError::from_git)?;
+    } else {
+        repo.remote("origin", clone_url).map_err(AppError::from_git)?;
+    }
+
+    crate::git::remote::push(repo, "origin", Some(&branch), false, true, false, None).map_err(
+        |push_error| {
+            // El repo remoto ya existe: sin este contexto el usuario creeria
+            // que todo fallo y volveria a crear repos duplicados.
+            AppError::new(push_error.kind, format!("El push falló: {}", push_error.message))
+                .with_detail(format!(
+                    "El repositorio ya se creó en GitHub: {clone_url}. \
+                     {} \
+                     Puedes reintentar el push desde el panel de Remotos.",
+                    push_error.detail.unwrap_or_default()
+                ))
+        },
+    )?;
+    Ok(())
+}
 
 /// Inicia el flujo de autenticación de GitHub (Device Flow).
 ///
@@ -98,18 +176,26 @@ pub async fn github_login_with_gh() -> AppResult<GitHubLoginResult> {
     })
 }
 
-/// Obtiene el usuario de GitHub actualmente autenticado (si hay credenciales guardadas en el llavero).
+/// Indica si el Device Flow está configurado (Client ID en el entorno).
+///
+/// El frontend lo consulta para no ofrecer un inicio de navegador que
+/// terminaría en error: sin Client ID propio GitHub no emite device codes.
+#[tauri::command]
+pub async fn github_device_flow_configured() -> AppResult<bool> {
+    Ok(crate::git::github_auth::device_flow_configured())
+}
+
+/// Obtiene el usuario de GitHub actualmente autenticado (llavero o sesión de `gh`).
 #[tauri::command]
 pub async fn github_get_user() -> AppResult<Option<GitHubUser>> {
-    if let Some(cred) = crate::git::remote::lookup_credential("github.com") {
-        if !cred.password.is_empty() {
-            let auth = GitHubAuth::new();
-            if let Ok(user) = auth.get_user_info(&cred.password).await {
-                return Ok(Some(user));
-            }
-        }
+    let token = github_token()?;
+    let auth = GitHubAuth::new();
+    match auth.get_user_info(&token).await {
+        Ok(user) => Ok(Some(user)),
+        // Token caducado o revocado: no es un error del usuario, se trata como
+        // «sin sesión» para que la UI muestre el botón de login.
+        Err(_) => Ok(None),
     }
-    Ok(None)
 }
 
 /// Cierra la sesión de GitHub eliminando la credencial del llavero.
@@ -121,14 +207,57 @@ pub async fn github_logout() -> AppResult<()> {
 /// Lista los repositorios del usuario autenticado en GitHub.
 #[tauri::command]
 pub async fn github_list_repos() -> AppResult<Vec<GitHubRepo>> {
-    let cred = crate::git::remote::lookup_credential("github.com")
-        .ok_or_else(|| AppError::authentication("No hay sesión activa de GitHub. Inicia sesión primero."))?;
-
-    if cred.password.is_empty() {
-        return Err(AppError::authentication("No hay token de GitHub configurado."));
-    }
-
+    let token = github_token()?;
     let auth = GitHubAuth::new();
-    auth.list_repos(&cred.password).await
+    auth.list_repos(&token).await
+}
+
+/// Crea un repositorio en GitHub (sin publicar contenido todavía).
+#[tauri::command]
+pub async fn github_create_repo(
+    name: String,
+    private: bool,
+    description: Option<String>,
+    owner: Option<String>,
+) -> AppResult<GitHubRepo> {
+    let token = github_token()?;
+    let auth = GitHubAuth::new();
+    auth.create_repo(&token, &name, private, description.as_deref(), owner.as_deref())
+        .await
+}
+
+/// Publica un repositorio local en GitHub.
+///
+/// Crea el repositorio remoto, configura `origin` con su URL y empuja la rama
+/// actual estableciendo su upstream, de modo que la rama queda sincronizada.
+#[tauri::command]
+pub async fn github_publish_repo(
+    state: State<'_, AppState>,
+    repo_id: String,
+    name: String,
+    private: bool,
+    description: Option<String>,
+    owner: Option<String>,
+    replace_origin: bool,
+) -> AppResult<GitHubRepo> {
+    let token = github_token()?;
+    let auth = GitHubAuth::new();
+    let created = auth
+        .create_repo(&token, &name, private, description.as_deref(), owner.as_deref())
+        .await?;
+
+    let handle = state.require(&repo_id)?;
+    let op = handle.clone();
+    let _guard = op.try_begin_op()?;
+    let clone_url = created.clone_url.clone();
+
+    tauri::async_runtime::spawn_blocking(move || {
+        let repo = handle.lock();
+        publish_remote_and_push(&repo, &clone_url, replace_origin)
+    })
+    .await
+    .map_err(|e| AppError::internal(format!("La publicación falló: {e}")))??;
+
+    Ok(created)
 }
 

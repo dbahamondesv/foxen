@@ -11,6 +11,7 @@ import {
   type ColumnKey,
   type ColumnWidths,
 } from '../lib/columns';
+import { loadSession, saveSession } from '../lib/session';
 import type {
   BranchList,
   CommitDetail,
@@ -84,9 +85,11 @@ interface FoxenState {
   githubReposOpen: boolean;
   githubRepos: GitHubRepo[];
   githubReposLoading: boolean;
+  publishOpen: boolean;
 
   // --- Acciones ---
   refreshRepositories: () => Promise<void>;
+  restoreSession: () => Promise<void>;
   openPath: (path: string) => Promise<void>;
   cloneAndOpen: (url: string, path: string) => Promise<void>;
   closeCurrent: () => Promise<void>;
@@ -98,6 +101,21 @@ interface FoxenState {
   refreshGitHubUser: () => Promise<void>;
   refreshGitHubRepos: () => Promise<void>;
   logoutGitHub: () => Promise<void>;
+  openPublish: () => void;
+  closePublish: () => void;
+  /**
+   * Crea el repositorio en GitHub, apunta `origin` y hace push de la rama
+   * actual. No cierra el modal: el éxito se muestra alli con el enlace al
+   * repositorio publicado.
+   */
+  publishToGitHub: (options: {
+    name: string;
+    private: boolean;
+    description: string | null;
+    owner: string | null;
+    /** Permite sobreescribir la URL de `origin` si ya apunta a otro sitio. */
+    replaceOrigin?: boolean;
+  }) => Promise<GitHubRepo | null>;
 
   refreshAll: () => Promise<void>;
   refreshStatus: () => Promise<void>;
@@ -142,6 +160,23 @@ interface FoxenState {
 
 let toastSeq = 0;
 
+/** Evita reabrir la sesion mas de una vez (React StrictMode monta dos veces). */
+let sessionRestored = false;
+
+/** Registra una ruta como abierta y la marca como activa en la sesion. */
+function rememberOpen(path: string): void {
+  const session = loadSession();
+  const paths = session.paths.includes(path) ? session.paths : [...session.paths, path];
+  saveSession({ paths, active: path });
+}
+
+/** Quita una ruta de la sesion (al cerrar el repositorio). */
+function forgetOpen(path: string): void {
+  const session = loadSession();
+  const paths = session.paths.filter((p) => p !== path);
+  saveSession({ paths, active: paths[0] ?? null });
+}
+
 export const useStore = create<FoxenState>((set, get) => ({
   repositories: [],
   repoId: null,
@@ -181,6 +216,7 @@ export const useStore = create<FoxenState>((set, get) => ({
   githubReposOpen: false,
   githubRepos: [],
   githubReposLoading: false,
+  publishOpen: false,
 
   // -------------------------------------------------------------------------
   // Repositorios
@@ -195,6 +231,49 @@ export const useStore = create<FoxenState>((set, get) => ({
     }
   },
 
+  /**
+   * Reabre los repositorios guardados de la sesion anterior.
+   *
+   * Las rutas que ya no existen (o no son repositorios) se descartan sin
+   * molestar al usuario. Se deja activo el que estaba activo, o el primero que
+   * se haya podido abrir.
+   */
+  restoreSession: async () => {
+    if (sessionRestored) return;
+    sessionRestored = true;
+
+    const session = loadSession();
+    if (session.paths.length === 0) return;
+
+    set({ loading: true });
+    const idByPath = new Map<string, string>();
+    let fallbackPath: string | null = null;
+    let activePath: string | null = null;
+
+    for (const path of session.paths) {
+      try {
+        const { handle } = await ipc.openRepository(path);
+        idByPath.set(handle.path, handle.id);
+        fallbackPath = fallbackPath ?? handle.path;
+        if (path === session.active) activePath = handle.path;
+      } catch {
+        // Repositorio movido, borrado o inaccesible: se omite.
+      }
+    }
+
+    await get().refreshRepositories();
+
+    const chosen = activePath ?? fallbackPath;
+    saveSession({ paths: [...idByPath.keys()], active: chosen });
+
+    const chosenId = chosen ? idByPath.get(chosen) : null;
+    if (chosenId) {
+      set({ repoId: chosenId });
+      await get().refreshAll();
+    }
+    set({ loading: false });
+  },
+
   openPath: async (path: string) => {
     set({ loading: true });
     try {
@@ -206,6 +285,7 @@ export const useStore = create<FoxenState>((set, get) => ({
         selectedFile: null,
         diff: null,
       });
+      rememberOpen(handle.path);
       await get().refreshRepositories();
       await get().refreshAll();
       get().notify('success', `Repositorio abierto: ${handle.name}`);
@@ -228,6 +308,7 @@ export const useStore = create<FoxenState>((set, get) => ({
         diff: null,
         githubReposOpen: false,
       });
+      rememberOpen(handle.path);
       await get().refreshRepositories();
       await get().refreshAll();
       get().notify('success', `Repositorio clonado y abierto: ${handle.name}`);
@@ -278,15 +359,45 @@ export const useStore = create<FoxenState>((set, get) => ({
     }
   },
 
-  closeCurrent: async () => {
+  openPublish: () => set({ publishOpen: true }),
+  closePublish: () => set({ publishOpen: false }),
+
+  publishToGitHub: async (options) => {
     const { repoId } = get();
+    if (!repoId) return null;
+    set({ loading: true });
+    try {
+      const repo = await ipc.githubPublishRepo(
+        repoId,
+        options.name,
+        options.private,
+        options.description,
+        options.owner,
+        options.replaceOrigin ?? false,
+      );
+      await get().refreshRepositories();
+      await get().refreshAll();
+      get().notify('success', `Publicado en GitHub: ${repo.fullName}`);
+      return repo;
+    } catch (error) {
+      get().notify('error', errorMessage(error));
+      return null;
+    } finally {
+      set({ loading: false });
+    }
+  },
+
+  closeCurrent: async () => {
+    const { repoId, repositories } = get();
     if (!repoId) return;
+    const current = repositories.find((r) => r.id === repoId);
     try {
       await ipc.closeRepository(repoId);
     } catch (error) {
       get().notify('error', errorMessage(error));
       return;
     }
+    if (current) forgetOpen(current.path);
     set({
       repoId: null,
       status: null,

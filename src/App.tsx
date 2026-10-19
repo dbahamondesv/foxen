@@ -8,6 +8,7 @@ import { PanelTabs, Toasts, TopBar } from './components/TopBar';
 import { SettingsPanel } from './components/SettingsPanel';
 import { GitHubAuthModal } from './components/GitHubAuthModal';
 import { GitHubReposModal } from './components/GitHubReposModal';
+import { PublishToGitHubModal } from './components/PublishToGitHubModal';
 import { useStore } from './store/useAppStore';
 import { useEffect } from 'react';
 import { onSystemThemeChange } from './lib/theme';
@@ -31,10 +32,17 @@ export default function App() {
   const openGitHubLogin = useStore((s) => s.openGitHubLogin);
   const openGitHubRepos = useStore((s) => s.openGitHubRepos);
   const openPath = useStore((s) => s.openPath);
+  const restoreSession = useStore((s) => s.restoreSession);
+  const publishOpen = useStore((s) => s.publishOpen);
 
   // En modo «seguir al sistema» hay que repintar cuando cambia la preferencia
   // del SO con la app abierta.
   useEffect(() => onSystemThemeChange(() => syncSystemTheme()), [syncSystemTheme]);
+
+  // Reabre los repositorios que quedaron abiertos en la sesion anterior.
+  useEffect(() => {
+    void restoreSession();
+  }, [restoreSession]);
 
   const handleBrowseLocal = async () => {
     try {
@@ -79,6 +87,7 @@ export default function App() {
         {settingsOpen && <SettingsPanel />}
         {githubLoginOpen && <GitHubAuthModal />}
         {githubReposOpen && <GitHubReposModal />}
+        {publishOpen && <PublishToGitHubModal />}
         <Toasts />
       </div>
     );
@@ -139,6 +148,7 @@ export default function App() {
       {settingsOpen && <SettingsPanel />}
       {githubLoginOpen && <GitHubAuthModal />}
       {githubReposOpen && <GitHubReposModal />}
+      {publishOpen && <PublishToGitHubModal />}
       <Toasts />
     </div>
   );

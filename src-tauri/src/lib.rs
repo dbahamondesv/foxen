@@ -118,9 +118,12 @@ pub fn run() {
             commands::github_auth::github_poll_login,
             commands::github_auth::github_login_complete,
             commands::github_auth::github_login_with_gh,
+            commands::github_auth::github_device_flow_configured,
             commands::github_auth::github_get_user,
             commands::github_auth::github_logout,
             commands::github_auth::github_list_repos,
+            commands::github_auth::github_create_repo,
+            commands::github_auth::github_publish_repo,
             // Git Flow
             commands::flow_status,
             commands::flow_init,

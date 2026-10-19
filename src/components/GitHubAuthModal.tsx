@@ -22,6 +22,19 @@ export function GitHubAuthModal() {
   // Configuración de Client ID personalizado
   const [clientId, setClientId] = useState(() => localStorage.getItem('foxen:githubClientId') ?? '');
   const [showConfig, setShowConfig] = useState(false);
+  /** Si el Device Flow está configurado en el backend (env FOXEN_GITHUB_CLIENT_ID). */
+  const [envFlowConfigured, setEnvFlowConfigured] = useState<boolean | null>(null);
+
+  // Sin Client ID (ni de entorno ni tecleado) el Device Flow fallaría con un
+  // error de GitHub: se oculta la opción y se ofrece configurarlo.
+  const flowReady = envFlowConfigured === true || clientId.trim() !== '';
+
+  useEffect(() => {
+    void ipc
+      .githubDeviceFlowConfigured()
+      .then(setEnvFlowConfigured)
+      .catch(() => setEnvFlowConfigured(false));
+  }, []);
 
   const pollingRef = useRef(false);
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -254,15 +267,44 @@ export function GitHubAuthModal() {
                     Recomendado si ya usas <code>gh</code> en tu equipo: reutiliza tu sesión sin
                     volver a autenticarte.
                   </small>
-                  <button
-                    type="button"
-                    className="secondary"
-                    onClick={() => void startFlow()}
-                    disabled={loading}
-                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
-                  >
-                    🌐 Iniciar sesión en el navegador (Device Flow)
-                  </button>
+                  {flowReady ? (
+                    <button
+                      type="button"
+                      className="secondary"
+                      onClick={() => void startFlow()}
+                      disabled={loading}
+                      style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
+                    >
+                      🌐 Iniciar sesión en el navegador (Device Flow)
+                    </button>
+                  ) : (
+                    <div
+                      style={{
+                        padding: 10,
+                        background: 'var(--bg-subtle, rgba(255, 255, 255, 0.03))',
+                        borderRadius: 6,
+                        border: '1px solid var(--border)',
+                        fontSize: 12,
+                        color: 'var(--text-muted)',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: 6,
+                      }}
+                    >
+                      <span>
+                        El inicio en el navegador requiere una OAuth App propia con «Enable Device
+                        Flow». Sin ella, usa <code>gh</code> o un PAT.
+                      </span>
+                      <button
+                        type="button"
+                        className="link"
+                        style={{ alignSelf: 'flex-start', fontSize: 12 }}
+                        onClick={() => setShowConfig(true)}
+                      >
+                        ⚙ Configurar Client ID para el Device Flow
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
 

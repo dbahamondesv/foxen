@@ -561,9 +561,6 @@ pub fn push(
 
     let mut options = PushOptions::new();
     options.remote_callbacks(callbacks(host.clone(), credential.cloned()));
-    if set_upstream {
-        // El upstream lo establece la referencia remota ya actualizada.
-        }
 
     let specs: Vec<&str> = refspecs.iter().map(|s| s.as_str()).collect();
     let mut errors: Vec<String> = Vec::new();
@@ -580,6 +577,15 @@ pub fn push(
         })?;
 
     let updated = specs.len();
+
+    if set_upstream {
+        if let Some(name) = branch {
+            let short = name.strip_prefix("refs/heads/").unwrap_or(name);
+            // Fijar el upstream no es fatal: el push ya se completo, la rama
+            // simplemente no quedaria marcada como de seguimiento.
+            let _ = set_branch_upstream(repo, short, remote_name);
+        }
+    }
 
     if let Some(cred) = credential {
         store_credential(&host, cred)?;
@@ -604,6 +610,31 @@ pub fn push(
         message,
         duration_ms: elapsed_ms(start),
     })
+}
+
+/// Marca `branch` como de seguimiento de `remote/branch`.
+///
+/// `Branch::set_upstream` exige que ya exista la ref de seguimiento remoto; si
+/// el push aun no la ha creado (p. ej. primer push de una rama nueva) se cae a
+/// escribir la configuracion `branch.<name>.remote/merge` directamente.
+fn set_branch_upstream(repo: &Repository, branch: &str, remote: &str) -> AppResult<()> {
+    if let Ok(mut local) = repo.find_branch(branch, git2::BranchType::Local) {
+        if local.set_upstream(Some(&format!("{remote}/{branch}"))).is_ok() {
+            return Ok(());
+        }
+    }
+
+    let mut config = repo.config().map_err(AppError::from_git)?;
+    config
+        .set_str(&format!("branch.{branch}.remote"), remote)
+        .map_err(AppError::from_git)?;
+    config
+        .set_str(
+            &format!("branch.{branch}.merge"),
+            &format!("refs/heads/{branch}"),
+        )
+        .map_err(AppError::from_git)?;
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------

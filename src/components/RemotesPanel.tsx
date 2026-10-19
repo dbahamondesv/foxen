@@ -11,6 +11,9 @@ export function RemotesPanel() {
   const remotes = useStore((s) => s.remotes);
   const run = useStore((s) => s.run);
   const notify = useStore((s) => s.notify);
+  const githubUser = useStore((s) => s.githubUser);
+  const openGitHubLogin = useStore((s) => s.openGitHubLogin);
+  const openPublish = useStore((s) => s.openPublish);
 
   const [newName, setNewName] = useState('origin');
   const [newUrl, setNewUrl] = useState('');
@@ -121,7 +124,24 @@ export function RemotesPanel() {
 
       <h3>Remotos ({remotes.length})</h3>
       {remotes.length === 0 ? (
-        <p className="empty">Este repositorio no tiene remotos.</p>
+        <>
+          <p className="empty">Este repositorio no tiene remotos.</p>
+          <div style={{ margin: '16px 0' }}>
+            <button
+              type="button"
+              className="primary"
+              onClick={() => {
+                if (githubUser) {
+                  openPublish();
+                } else {
+                  openGitHubLogin();
+                }
+              }}
+            >
+              🚀 Publicar en GitHub…
+            </button>
+          </div>
+        </>
       ) : (
         <ul className="remote-list">
           {remotes.map((remote) => (

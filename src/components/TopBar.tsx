@@ -21,6 +21,8 @@ function RepositoryPicker() {
   const githubUser = useStore((s) => s.githubUser);
   const openGitHubLogin = useStore((s) => s.openGitHubLogin);
   const openGitHubRepos = useStore((s) => s.openGitHubRepos);
+  const openPublish = useStore((s) => s.openPublish);
+  const repoId = useStore((s) => s.repoId);
   const [open_, setOpen] = useState(false);
 
   useEffect(() => {
@@ -84,6 +86,25 @@ function RepositoryPicker() {
                   <small>{repo.path}</small>
                 </button>
               ))}
+            </>
+          )}
+          {repoId && (
+            <>
+              <div className="repo-menu-sep">GitHub</div>
+              <button
+                type="button"
+                className="repo-menu-item"
+                onClick={() => {
+                  setOpen(false);
+                  if (githubUser) {
+                    openPublish();
+                  } else {
+                    openGitHubLogin();
+                  }
+                }}
+              >
+                🚀 Publicar en GitHub…
+              </button>
             </>
           )}
         </div>
