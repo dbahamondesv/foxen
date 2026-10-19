@@ -53,18 +53,19 @@
   GitHub".
 
 ### 4. Verificación completa
-- [ ] `npx tsc --noEmit`, `npm run lint`, `npm run test`, `npm run build`.
-- [ ] `cargo check`, `cargo test --lib`, `cargo test --test git_integration`.
-- [ ] `./build-deb.sh`.
+- [x] `npx tsc --noEmit`, `npm run lint`, `npm run test`, `npm run build`.
+- [x] `cargo check`, `cargo test --lib`, `cargo test --test git_integration`.
+- [x] `./build-deb.sh` (`Foxen_0.1.0_amd64.deb`, 4.86 MiB).
 
 ### 5. Cierre
-- [ ] Entrada en `DIARIO.md` (device flow honesto, publicación con control de
+- [x] Entrada en `DIARIO.md` (device flow honesto, publicación con control de
   origin, tests, docs).
-- [ ] Commits en chunks lógicos:
+- [x] Commits en chunks lógicos:
   1. `feat(github): device flow configurable + publicación con control de origin`
   2. `feat(desktop): devtools accesibles en desarrollo + tests de utilidades`
   3. `docs: README, LICENSE y diario de la 0.1.0`
-- [ ] Tag `v0.1.0` (local, sin push).
+- [x] Tag `v0.1.0` (local, sin push). Movido después al commit final de la
+  Parte 2 (`b249572`).
 
 ## Fuera de alcance (para después)
 - CI (GitHub Actions), publicación flatpak, i18n, tests E2E con geckodriver
