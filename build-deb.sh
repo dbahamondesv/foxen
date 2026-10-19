@@ -80,6 +80,13 @@ fi
 echo "==> Compilando Foxen y empaquetando .deb (perfil: $PROFILE)"
 npx tauri build --bundles deb "${BUILD_FLAGS[@]}"
 
+# --- Ajuste del paquete ------------------------------------------------------
+# Renombra el .desktop autogenerado (Foxen.desktop) al id de la app para que
+# concuerde con el <launchable> de AppStream.
+for deb in src-tauri/target/"$PROFILE"/bundle/deb/*.deb; do
+  [[ -f "$deb" ]] && ./packaging/postprocess-deb.sh "$deb"
+done
+
 # --- Localizar el paquete generado ------------------------------------------
 DEB_DIR="src-tauri/target/$PROFILE/bundle/deb"
 DEB_FILE="$(find "$DEB_DIR" -maxdepth 1 -name '*.deb' -printf '%T@ %p\n' 2>/dev/null \

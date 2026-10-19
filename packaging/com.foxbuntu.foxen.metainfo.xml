@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <component type="desktop-application">
   <id>com.foxbuntu.foxen</id>
-  <launchable type="desktop-id">com.foxbuntu.foxen.desktop</launchable>
+  <launchable type="desktop-id">Foxen.desktop</launchable>
 
   <name>Foxen</name>
   <summary>Cliente gráfico de Git con grafo de commits interactivo</summary>
@@ -20,6 +20,8 @@
     <color type="primary" scheme_preference="dark">#1f6feb</color>
     <color type="primary" scheme_preference="light">#0d47a1</color>
   </branding>
+
+  <icon type="stock">com.foxbuntu.foxen</icon>
 
   <content_rating type="oars-1.1"/>
 
@@ -69,8 +71,8 @@
       <li>Flujos de trabajo Git Flow para features, releases y hotfixes</li>
     </ul>
     <p>
-      Al ser una aplicación Flatpak, Foxen pide acceso a las carpetas que elijas abrir
-      mediante el diálogo del sistema, y no al resto del disco.
+      Foxen pide acceso únicamente a las carpetas que elijas abrir mediante el diálogo
+      del sistema, y no al resto del disco.
     </p>
   </description>
 

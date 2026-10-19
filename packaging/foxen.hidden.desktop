@@ -9,5 +9,5 @@ Type=Application
 Categories=Development;RevisionControl;
 Keywords=git;vcs;version control;source control;repository;commit;branch;merge;diff;
 StartupNotify=true
-StartupWMClass=Foxen
-MimeType=x-scheme-handler/git;
+NoDisplay=true
+StartupWMClass=foxen

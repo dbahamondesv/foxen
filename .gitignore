@@ -20,8 +20,10 @@ src-tauri/target/
 
 # Flatpak
 .flatpak-builder/
-repo/
+.flatpak-tools/
+flatpak-repo/
 build-dir/
+*.flatpak
 
 # Editores y SO
 .DS_Store

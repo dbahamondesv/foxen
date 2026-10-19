@@ -26,7 +26,9 @@
     ],
     "security": {
       "csp": "default-src 'self'; img-src 'self' asset: http://asset.localhost data: https://avatars.githubusercontent.com; style-src 'self' 'unsafe-inline'; font-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost",
-      "capabilities": ["default"],
+      "capabilities": [
+        "default"
+      ],
       "assetProtocol": {
         "enable": false,
         "scope": []
@@ -35,7 +37,11 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["deb", "appimage", "rpm"],
+    "targets": [
+      "deb",
+      "appimage",
+      "rpm"
+    ],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -49,10 +55,34 @@
     "longDescription": "Foxen es un cliente de escritorio para gestionar repositorios git: grafo de commits, ramas, staging, stashes y remotos.",
     "linux": {
       "deb": {
-        "depends": ["libwebkit2gtk-4.1-0", "libgtk-3-0"],
-        "desktopTemplate": "../packaging/deb/foxen.desktop",
+        "desktopTemplate": "../packaging/foxen.desktop",
         "files": {
-          "/usr/share/metainfo/com.foxbuntu.foxen.metainfo.xml": "../packaging/deb/com.foxbuntu.foxen.metainfo.xml"
+          "/usr/share/metainfo/com.foxbuntu.foxen.metainfo.xml": "../packaging/com.foxbuntu.foxen.metainfo.xml",
+          "/usr/share/icons/hicolor/32x32/apps/com.foxbuntu.foxen.png": "../src-tauri/icons/32x32.png",
+          "/usr/share/icons/hicolor/128x128/apps/com.foxbuntu.foxen.png": "../src-tauri/icons/128x128.png",
+          "/usr/share/icons/hicolor/256x256/apps/com.foxbuntu.foxen.png": "../src-tauri/icons/128x128@2x.png",
+          "/usr/share/icons/hicolor/512x512/apps/com.foxbuntu.foxen.png": "../src-tauri/icons/icon.png"
+        }
+      },
+      "rpm": {
+        "desktopTemplate": "../packaging/foxen.hidden.desktop",
+        "files": {
+          "/usr/share/metainfo/com.foxbuntu.foxen.metainfo.xml": "../packaging/com.foxbuntu.foxen.metainfo.xml",
+          "/usr/share/applications/com.foxbuntu.foxen.desktop": "../packaging/foxen.desktop",
+          "/usr/share/icons/hicolor/32x32/apps/com.foxbuntu.foxen.png": "../src-tauri/icons/32x32.png",
+          "/usr/share/icons/hicolor/128x128/apps/com.foxbuntu.foxen.png": "../src-tauri/icons/128x128.png",
+          "/usr/share/icons/hicolor/256x256/apps/com.foxbuntu.foxen.png": "../src-tauri/icons/128x128@2x.png",
+          "/usr/share/icons/hicolor/512x512/apps/com.foxbuntu.foxen.png": "../src-tauri/icons/icon.png"
+        }
+      },
+      "appimage": {
+        "files": {
+          "/usr/share/metainfo/com.foxbuntu.foxen.metainfo.xml": "../packaging/com.foxbuntu.foxen.metainfo.xml",
+          "/com.foxbuntu.foxen.png": "../src-tauri/icons/icon.png",
+          "/usr/share/icons/hicolor/32x32/apps/com.foxbuntu.foxen.png": "../src-tauri/icons/32x32.png",
+          "/usr/share/icons/hicolor/128x128/apps/com.foxbuntu.foxen.png": "../src-tauri/icons/128x128.png",
+          "/usr/share/icons/hicolor/256x256/apps/com.foxbuntu.foxen.png": "../src-tauri/icons/128x128@2x.png",
+          "/usr/share/icons/hicolor/512x512/apps/com.foxbuntu.foxen.png": "../src-tauri/icons/icon.png"
         }
       }
     }
