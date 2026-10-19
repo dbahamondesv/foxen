@@ -27,6 +27,7 @@ import type {
   TagInfo,
   GitHubUser,
   GitHubRepo,
+  PushResult,
 } from '../lib/types';
 
 export type Toast = { id: number; kind: 'info' | 'error' | 'success'; text: string };
@@ -158,6 +159,13 @@ interface FoxenState {
 
   /** Envoltura para ejecutar una accion mutante y refrescar lo afectado. */
   run: (label: string, action: () => Promise<unknown>) => Promise<boolean>;
+
+  /**
+   * Sube la rama actual a su remoto. Usa el remoto del upstream si lo hay; si
+   * no, `origin` o el primero disponible, y fija el upstream tras el primer
+   * push para que la rama quede de seguimiento.
+   */
+  pushCurrent: () => Promise<PushResult>;
 }
 
 let toastSeq = 0;
@@ -440,6 +448,19 @@ export const useStore = create<FoxenState>((set, get) => ({
     } finally {
       set({ loading: false });
     }
+  },
+
+  pushCurrent: async () => {
+    const { repoId, status, remotes } = get();
+    if (!repoId) throw new Error('No hay repositorio abierto');
+    const branch = status?.headBranch;
+    if (!branch) throw new Error('No hay rama actual (HEAD desligado)');
+    const remote =
+      status?.upstream?.split('/')[0] ||
+      remotes.find((r) => r.name === 'origin')?.name ||
+      remotes[0]?.name;
+    if (!remote) throw new Error('El repositorio no tiene remotos; anade uno en el panel Remotos');
+    return ipc.pushRemote(repoId, remote, branch, false, !status?.hasUpstream, false, null);
   },
 
   refreshStatus: async () => {

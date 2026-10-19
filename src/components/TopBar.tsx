@@ -131,14 +131,34 @@ export function TopBar() {
   const openGitHubRepos = useStore((s) => s.openGitHubRepos);
   const refreshGitHubUser = useStore((s) => s.refreshGitHubUser);
   const refreshAll = useStore((s) => s.refreshAll);
+  const pushCurrent = useStore((s) => s.pushCurrent);
+  const commitMessage = useStore((s) => s.commitMessage);
+  const setCommitMessage = useStore((s) => s.setCommitMessage);
+  const notify = useStore((s) => s.notify);
 
   useEffect(() => {
     void refreshGitHubUser();
   }, [refreshGitHubUser]);
 
+  const stagedCount = status?.files.filter((f) => f.staged).length ?? 0;
+
   const fetchAll = () => {
     if (!repoId) return;
     void run('Fetch', () => ipc.fetchRemote(repoId, null, true, null));
+  };
+
+  const commitStaged = () => {
+    if (!repoId) return;
+    const message = commitMessage.trim();
+    if (!message) {
+      notify('error', 'El mensaje del commit no puede estar vacio');
+      return;
+    }
+    void run('Crear commit', async () => {
+      const result = await ipc.createCommit(repoId, message, false, false, false);
+      setCommitMessage('');
+      return result;
+    });
   };
 
   return (
@@ -193,6 +213,23 @@ export function TopBar() {
         </button>
         <button type="button" onClick={fetchAll} disabled={!repoId || loading}>
           Fetch
+        </button>
+        <button
+          type="button"
+          onClick={commitStaged}
+          disabled={!repoId || loading || stagedCount === 0 || !commitMessage.trim()}
+          title="Crear un commit con lo que esta en stage (usa el mensaje del panel Cambios)"
+        >
+          Commit
+        </button>
+        <button
+          type="button"
+          className="primary"
+          onClick={() => void run('Push', () => pushCurrent())}
+          disabled={!repoId || loading || !status?.headBranch}
+          title="Subir la rama actual al remoto"
+        >
+          Push{status && status.ahead > 0 ? ` ↑${status.ahead}` : ''}
         </button>
         <button
           type="button"

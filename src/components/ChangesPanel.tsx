@@ -87,6 +87,19 @@ export function ChangesPanel() {
 
   const stashAll = () => void run('Crear stash', () => ipc.pushStash(repoId, null, true, false, false));
 
+  const commitAndPush = () => {
+    const message = commitMessage.trim();
+    if (!message) {
+      notify('error', 'El mensaje del commit no puede estar vacio');
+      return;
+    }
+    void run('Commit y push', async () => {
+      await ipc.createCommit(repoId, message, false, false, false);
+      setCommitMessage('');
+      return useStore.getState().pushCurrent();
+    });
+  };
+
   const renderGroup = (title: string, files: FileStatus[], isStagedColumn: boolean) => {
     if (files.length === 0) return null;
     return (
@@ -210,6 +223,14 @@ export function ChangesPanel() {
             onClick={commit}
           >
             Commit {staged.length > 0 ? `(${staged.length})` : ''}
+          </button>
+          <button
+            type="button"
+            disabled={staged.length === 0}
+            onClick={commitAndPush}
+            title="Crear el commit y subir la rama actual al remoto"
+          >
+            Commit y push
           </button>
           <button type="button" disabled={!status.headOid} onClick={amend}>
             Amend
