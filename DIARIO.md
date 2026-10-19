@@ -139,3 +139,57 @@ Solución (`src-tauri/src/git/remote.rs`):
 
 Nota de aprendizaje: para validar credenciales hay que probar contra un remoto **privado**;
 un repo público no ejercita el camino de autenticación.
+
+2025-10-15 20:12 - Persistencia de repos abiertos + publicación en GitHub + fix upstream + desactivar browser
+- Persistencia: src/lib/session.ts guarda {paths, active}. Store: restoreSession, remember/forget en openPath/cloneAndOpen/closeCurrent. App.tsx llama restoreSession.
+- Desactivar navegador: src/lib/desktop.ts bloquea contextmenu, F5/F12, Ctrl/Cmd+R/P/U/S/O/N/I/J/C/±/0, wheel+ctrl. main.tsx llama disableBrowserFeatures().
+- GitHub publish: src-tauri/src/git/github_auth.rs create_repo (POST /user/repos o /orgs/{org}/repos), commands/github_auth.rs github_create_repo/github_publish_repo. publish añade origin (o actualiza URL) y hace push de rama actual con set_upstream. remote.rs fix: set_branch_upstream tras push exitoso.
+- Registrados comandos en lib.rs. Frontend: ipc, store, PublishToGitHubModal, entry points en TopBar/RemotesPanel, App.tsx.
+
+Verificación: cargo check/test OK (33 pass), tsc --noEmit OK, eslint OK, vite build OK.
+
+## 2026-10-19
+
+### Cierre de la v0.1.0: device flow honesto, publicación robusta, tests y docs
+
+**Backend (Rust)**:
+- `git/github_auth.rs`: eliminado el `DEFAULT_CLIENT_ID` muerto (devolvía HTTP 404
+  porque la OAuth App no existía o no tenía Device Flow). El Client ID ahora viene
+  solo de `FOXEN_GITHUB_CLIENT_ID` o del parámetro explícito del modal.
+  - `device_flow_configured()` + comando `github_device_flow_configured`: el
+    frontend consulta si el Device Flow es viable antes de ofrecerlo.
+  - `start_device_flow` falla rápido con mensaje accionable si no hay Client ID.
+  - `validate_repo_name` con las reglas de GitHub (1-100 chars, alfanumérico y
+    `-_ .`, sin empezar por `.` ni `-`): error claro antes de llamar a la API.
+- `commands/github_auth.rs`:
+  - `github_get_user`/`github_list_repos` usan `github_token()` (llavero → `gh`),
+    antes ignoraban la sesión de `gh`.
+  - Publicación con control de `origin`: `publish_remote_and_push` exige
+    `replace_origin` para pisar una URL existente; sin él, error con la URL actual.
+  - Si el push falla tras crear el repo remoto, el error indica que el repo **ya
+    existe en GitHub** y su URL, para no crear duplicados.
+
+**Frontend**:
+- `PublishToGitHubModal`: confirmación nativa del SO si hay `origin` con otra URL;
+  tras el éxito, vista de resumen con **"Ver en GitHub"** (plugin opener). El store
+  ya no cierra el modal automáticamente.
+- `GitHubAuthModal`: el botón de navegador solo aparece con Device Flow configurado
+  (env o Client ID tecleado en el propio modal); si no, se explica y se ofrece
+  configurarlo. `gh` y PAT siguen siempre disponibles.
+- `desktop.ts`: en desarrollo no se bloquean F12/devtools (`isBrowserShortcut`
+  parametrizable con `isDev`); en release siguen bloqueadas.
+- `tsconfig.json`: añadido `vite/client` a `types` (tipos de `import.meta.env`).
+- `preview.tsx`: deja de llamarse "temporal" — se queda como herramienta de
+  inspección visual; mock de `github_device_flow_configured`.
+
+**Tests y docs**:
+- Primeros tests del frontend con Vitest (32 tests): `session`, `desktop`
+  (atajos bloqueados/permitidos), `format` y `b64`.
+- `README.md` (features, build, autenticación, estructura) y `LICENSE` (MIT),
+  que el metainfo AppStream ya declaraba.
+- `PLAN-CIERRE-v0.1.0.md`: plan de cierre con checklist.
+
+**Verificación**: `tsc --noEmit`, `eslint --max-warnings 0`, `vitest` (32/32),
+`vite build`, `cargo check`, `cargo test --lib` (3+1 ignored),
+`cargo test --test git_integration` (33/33), `./build-deb.sh` →
+`Foxen_0.1.0_amd64.deb` (4.86 MiB).
