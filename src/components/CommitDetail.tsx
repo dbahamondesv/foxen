@@ -1,6 +1,6 @@
 import { useStore } from '../store/useAppStore';
 import * as ipc from '../lib/ipc';
-import { baseName, changeColor } from '../lib/format';
+import { authorColor, authorInitial, baseName, changeColor } from '../lib/format';
 
 /** Detalle del commit seleccionado: metadatos, mensaje y archivos. */
 export function CommitDetailView() {
@@ -12,7 +12,12 @@ export function CommitDetailView() {
   const notify = useStore((s) => s.notify);
 
   if (!repoId || !detail) {
-    return <p className="empty">Selecciona un commit en el grafo.</p>;
+    return (
+      <div className="panel-empty-state">
+        <span className="empty-icon">📌</span>
+        <p>Selecciona un commit en el grafo para explorar su detalle.</p>
+      </div>
+    );
   }
 
   const message = `${detail.subject}${detail.body ? `\n\n${detail.body}` : ''}`;
@@ -20,26 +25,51 @@ export function CommitDetailView() {
   return (
     <div className="panel-body commit-detail">
       <header className="detail-header">
-        <h2>{detail.subject}</h2>
-        <div className="detail-meta">
-          <span>
-            <strong>{detail.authorName}</strong> &lt;{detail.authorEmail}&gt;
+        <div className="detail-header-top">
+          <span
+            className="graph-avatar detail-avatar"
+            style={{ backgroundColor: authorColor(detail.authorName) }}
+            title={`${detail.authorName} <${detail.authorEmail}>`}
+          >
+            {authorInitial(detail.authorName)}
           </span>
-          <span>{detail.authorTimeIso.replace('T', ' ').replace('.000Z', '')}</span>
-          <code>{detail.shortOid}</code>
+          <div className="detail-meta">
+            <span className="detail-author">
+              <strong>{detail.authorName}</strong>
+              <small className="detail-email">&lt;{detail.authorEmail}&gt;</small>
+            </span>
+            <span className="detail-time">{detail.authorTimeIso.replace('T', ' ').replace('.000Z', '')}</span>
+          </div>
+          <span
+            className="graph-shortsha"
+            title={`SHA completo: ${detail.oid} (clic para copiar)`}
+            onClick={() => {
+              void navigator.clipboard.writeText(detail.oid);
+              notify('info', `SHA ${detail.shortOid} copiado al portapapeles`);
+            }}
+          >
+            {detail.shortOid}
+          </span>
         </div>
+
+        <h2 className="detail-title">{detail.subject}</h2>
+
         {detail.parents.length > 1 && (
           <p className="detail-parents">
             Merge con {detail.parents.length} padres:{' '}
-            {detail.parents.map((p) => p.slice(0, 7)).join(', ')}
+            {detail.parents.map((p) => (
+              <code key={p} className="parent-sha" title={p}>
+                {p.slice(0, 7)}
+              </code>
+            ))}
           </p>
         )}
       </header>
 
       <div className="detail-stats">
-        <span>{detail.stats.filesChanged} archivos</span>
-        <span className="ins">+{detail.stats.insertions}</span>
-        <span className="del">−{detail.stats.deletions}</span>
+        <span className="stats-pill files-count">{detail.stats.filesChanged} archivos</span>
+        <span className="stats-pill ins">+{detail.stats.insertions}</span>
+        <span className="stats-pill del">−{detail.stats.deletions}</span>
         {!detail.reachableFromHead && <span className="badge badge-warn">no alcanzable</span>}
       </div>
 
@@ -48,19 +78,25 @@ export function CommitDetailView() {
       <div className="detail-actions">
         <button
           type="button"
+          className="topbar-action-btn"
           onClick={() => void run('Cherry-pick', () => ipc.cherryPick(repoId, detail.oid))}
+          title="Aplica los cambios de este commit sobre la rama actual"
         >
-          Cherry-pick
+          <span className="btn-icon">🍒</span>
+          <span>Cherry-pick</span>
         </button>
         <button
           type="button"
+          className="topbar-action-btn"
           onClick={() => void run('Revert', () => ipc.revertCommit(repoId, detail.oid))}
+          title="Crea un nuevo commit que invierte los cambios de este commit"
         >
-          Revert
+          <span className="btn-icon">↩</span>
+          <span>Revert</span>
         </button>
         <button
           type="button"
-          className="danger-outline"
+          className="topbar-action-btn danger-outline"
           title="Mueve la rama actual a este commit conservando los cambios en el working tree"
           onClick={() => {
             const branch = currentBranch;
@@ -74,11 +110,14 @@ export function CommitDetailView() {
             );
           }}
         >
-          Resetear rama a aqui
+          <span>Resetear a aquí</span>
         </button>
       </div>
 
-      <h3>Archivos ({detail.files.length})</h3>
+      <div className="detail-files-header">
+        <h3>Archivos modificados ({detail.files.length})</h3>
+      </div>
+
       <ul className="detail-files">
         {detail.files.map((file) => (
           <li key={file.path}>
@@ -101,7 +140,7 @@ export function CommitDetailView() {
       </ul>
 
       <details className="detail-raw">
-        <summary>Mensaje completo</summary>
+        <summary>Mensaje de commit sin formato</summary>
         <pre>{message}</pre>
       </details>
     </div>

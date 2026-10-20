@@ -784,6 +784,137 @@ fn abort_merge_deja_el_repo_como_estaba() {
 }
 
 #[test]
+fn cerrar_merge_con_conflicto_crea_commit_de_dos_padres() {
+    let fixture = TestRepo::new("merge-continue");
+    fixture.write("a.txt", "linea original\n");
+    fixture.commit_all("base");
+
+    let mut repo = fixture.open();
+    refs::create(
+        &mut repo,
+        NewBranch {
+            name: "feature/m",
+            start_point: None,
+            checkout: true,
+            force: false,
+            track: false,
+        },
+    )
+    .expect("crear feature");
+    fixture.write("a.txt", "version de la feature\n");
+    fixture.commit_all("feature");
+
+    let mut repo = fixture.open();
+    refs::checkout(&mut repo, "main").expect("volver a main");
+    fixture.write("a.txt", "version de main\n");
+    fixture.commit_all("main");
+
+    let mut repo = fixture.open();
+    let result = merge::merge(
+        &mut repo,
+        MergeOptions2 {
+            target: "feature/m".to_string(),
+            no_ff: true,
+            ff_only: false,
+            squash: false,
+            message: None,
+        },
+    )
+    .expect("merge");
+    assert!(!result.success, "debe haber conflicto");
+    assert!(merge::merge_in_progress(&repo), "la fusion queda en curso");
+
+    // Resolver a favor de la feature y cerrar la fusion con un commit.
+    commit_ops::checkout_conflict_side(
+        &repo,
+        "a.txt",
+        commit_ops::ConflictSide::parse("theirs").expect("lado"),
+    )
+    .expect("resolver conflicto");
+    let outcome = commit_ops::commit(
+        &repo,
+        commit_ops::CommitOptions {
+            message: "Merge feature/m",
+            amend: false,
+            allow_empty: true,
+            sign: false,
+            staged_only: true,
+            target: None,
+        },
+    )
+    .expect("commit de merge");
+    assert!(outcome.message.contains("Creado"), "{}", outcome.message);
+
+    let repo = fixture.open();
+    assert!(!merge::merge_in_progress(&repo), "la fusion debe quedar cerrada");
+    let head = repo.head().expect("head").peel_to_commit().expect("commit");
+    assert_eq!(head.parent_count(), 2, "el commit de merge debe tener dos padres");
+}
+
+#[test]
+fn merge_into_cambia_al_destino_y_fusiona() {
+    let fixture = TestRepo::new("merge-into");
+    fixture.write("a.txt", "base\n");
+    fixture.commit_all("base");
+
+    // develop parte de main y estara en pausa; feat avanza por su lado.
+    let mut repo = fixture.open();
+    refs::create(
+        &mut repo,
+        NewBranch {
+            name: "develop",
+            start_point: None,
+            checkout: true,
+            force: false,
+            track: false,
+        },
+    )
+    .expect("crear develop");
+
+    let mut repo = fixture.open();
+    refs::create(
+        &mut repo,
+        NewBranch {
+            name: "feat",
+            start_point: None,
+            checkout: true,
+            force: false,
+            track: false,
+        },
+    )
+    .expect("crear feat");
+    fixture.write("b.txt", "solo en feat\n");
+    fixture.commit_all("avanza feat");
+
+    // Estando en feat, fusionar feat dentro de develop.
+    let mut repo = fixture.open();
+    let result = merge::merge_into(
+        &mut repo,
+        "develop",
+        MergeOptions2 {
+            target: "feat".to_string(),
+            no_ff: true,
+            ff_only: false,
+            squash: false,
+            message: None,
+        },
+    )
+    .expect("merge_into");
+    assert!(result.success, "{}", result.message);
+
+    let repo = fixture.open();
+    // El destino contiene el commit de merge y queda como rama actual.
+    assert_eq!(
+        repo.head().unwrap().shorthand(),
+        Some("develop"),
+        "tras fusionar se queda en el destino"
+    );
+    let head = repo.head().unwrap().peel_to_commit().unwrap();
+    assert_eq!(head.parent_count(), 2, "debe ser un commit de merge");
+    assert!(repo.find_branch("feat", git2::BranchType::Local).is_ok());
+}
+
+#[test]
 fn compara_dos_ramas() {
     let fixture = TestRepo::new("compara");
     fixture.write("a.txt", "uno\n");

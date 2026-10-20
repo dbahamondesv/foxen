@@ -87,6 +87,8 @@ interface FoxenState {
   githubRepos: GitHubRepo[];
   githubReposLoading: boolean;
   publishOpen: boolean;
+  /** Rama objetivo del dialogo de fusion; `null` si esta cerrado. */
+  mergeTarget: string | null;
 
   // --- Acciones ---
   refreshRepositories: () => Promise<void>;
@@ -94,6 +96,9 @@ interface FoxenState {
   openPath: (path: string) => Promise<void>;
   cloneAndOpen: (url: string, path: string) => Promise<void>;
   closeCurrent: () => Promise<void>;
+
+  openMerge: (target: string) => void;
+  closeMerge: () => void;
 
   openGitHubLogin: () => void;
   closeGitHubLogin: () => void;
@@ -227,6 +232,7 @@ export const useStore = create<FoxenState>((set, get) => ({
   githubRepos: [],
   githubReposLoading: false,
   publishOpen: false,
+  mergeTarget: null,
 
   // -------------------------------------------------------------------------
   // Repositorios
@@ -372,6 +378,9 @@ export const useStore = create<FoxenState>((set, get) => ({
   openPublish: () => set({ publishOpen: true }),
   closePublish: () => set({ publishOpen: false }),
 
+  openMerge: (target) => set({ mergeTarget: target }),
+  closeMerge: () => set({ mergeTarget: null }),
+
   publishToGitHub: async (options) => {
     const { repoId } = get();
     if (!repoId) return null;
@@ -419,6 +428,7 @@ export const useStore = create<FoxenState>((set, get) => ({
       flow: null,
       reflog: [],
       operationState: null,
+      mergeTarget: null,
       selectedOid: null,
       selectedDetail: null,
       selectedFile: null,

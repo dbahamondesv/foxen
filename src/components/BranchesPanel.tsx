@@ -10,6 +10,7 @@ export function BranchesPanel() {
   const branches = useStore((s) => s.branches);
   const run = useStore((s) => s.run);
   const selectCommit = useStore((s) => s.selectCommit);
+  const openMerge = useStore((s) => s.openMerge);
 
   const [filter, setFilter] = useState('');
   const [newName, setNewName] = useState('');
@@ -41,8 +42,7 @@ export function BranchesPanel() {
   const remove = (branch: BranchInfo) =>
     void run(`Eliminar ${branch.name}`, () => ipc.deleteBranch(repoId, branch.name, false));
 
-  const merge = (branch: BranchInfo) =>
-    void run(`Fusionar ${branch.name}`, () => ipc.mergeBranch(repoId, branch.name));
+  const merge = (branch: BranchInfo) => openMerge(branch.name);
 
   // El rebase tomaba `branches.head` en vez de la rama pulsada, con lo que la
   // accion era un no-op cuando no estabas en la ultima rama de la lista.

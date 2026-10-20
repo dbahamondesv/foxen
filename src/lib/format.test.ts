@@ -8,6 +8,9 @@ import {
   statusChar,
   textWidth,
   truncateMiddle,
+  authorInitial,
+  authorColor,
+  commitKind,
 } from './format';
 import type { FileStatus } from './types';
 
@@ -128,5 +131,53 @@ describe('textWidth', () => {
   it('estima el ancho como longitud por el ancho de carácter', () => {
     expect(textWidth('')).toBe(0);
     expect(textWidth('abc')).toBeCloseTo(3 * 7.1);
+  });
+});
+
+describe('authorInitial', () => {
+  it('obtiene la primera letra en mayúscula', () => {
+    expect(authorInitial('foxbuntu')).toBe('F');
+    expect(authorInitial('dbahamondesv')).toBe('D');
+    expect(authorInitial('  alice  ')).toBe('A');
+    expect(authorInitial('')).toBe('?');
+  });
+});
+
+describe('authorColor', () => {
+  it('genera un color consistente para el mismo autor', () => {
+    expect(authorColor('foxbuntu')).toBe(authorColor('foxbuntu'));
+    expect(authorColor('foxbuntu')).toMatch(/^#[0-9a-f]{6}$/i);
+  });
+});
+
+describe('commitKind', () => {
+  it('reconoce prefijos de Conventional Commits', () => {
+    expect(commitKind('feat: añadir grafo').kind).toBe('feature');
+    expect(commitKind('feature(ui): paneles').kind).toBe('feature');
+    expect(commitKind('fix: corregir merge').kind).toBe('fix');
+    expect(commitKind('fix(ipc): token').badge).toBe('D');
+    expect(commitKind('docs: actualizar README').kind).toBe('docs');
+    expect(commitKind('chore: bump deps').kind).toBe('chore');
+    expect(commitKind('refactor(store): simplificar').kind).toBe('refactor');
+    expect(commitKind('test: cobertura').kind).toBe('test');
+    expect(commitKind('perf: memoizar').kind).toBe('perf');
+  });
+
+  it('cae a palabras clave cuando no hay prefijo', () => {
+    expect(commitKind('Añadir soporte de tags').kind).toBe('feature');
+    expect(commitKind('Arreglar el watcher de inotify').kind).toBe('fix');
+    expect(commitKind('Renombrar variables internas').kind).toBe('refactor');
+    expect(commitKind('Actualizar comentarios del módulo').kind).toBe('docs');
+  });
+
+  it('usa chore como categoría por defecto', () => {
+    expect(commitKind('Merge branch main').kind).toBe('chore');
+    expect(commitKind('v0.1.0').kind).toBe('chore');
+  });
+
+  it('expone la etiqueta tipográfica corta', () => {
+    expect(commitKind('feat: algo').badge).toBe('F');
+    expect(commitKind('fix: algo').badge).toBe('D');
+    expect(commitKind('chore: algo').badge).toBe('chore');
   });
 });

@@ -19,6 +19,42 @@ pub struct MergeOptions2 {
     pub message: Option<String>,
 }
 
+/// Fusiona la rama `opts.target` en `destination`, cambiando de rama si hace
+/// falta.
+///
+/// A diferencia de [`merge`], que integra siempre en la rama actual, aqui el
+/// destino se indica explicitamente (`feat` -> `dev`). Si hay que cambiar y la
+/// fusion choca, el repositorio se queda en `destination` con la fusion a
+/// medias: los conflictos pertenecen a esa rama y `merge_continue`/`merge_abort`
+/// deben operar sobre ella. Si `merge` devuelve un error (no conflicto) se
+/// restaura la rama de partida.
+pub fn merge_into(
+    repo: &mut Repository,
+    destination: &str,
+    opts: MergeOptions2,
+) -> AppResult<MergeResult> {
+    let previous = repo
+        .head()
+        .ok()
+        .filter(|h| h.is_branch())
+        .and_then(|h| h.shorthand().map(|s| s.to_string()));
+
+    if previous.as_deref() != Some(destination) {
+        crate::git::refs::checkout(repo, destination)?;
+    }
+
+    let result = merge(repo, opts);
+
+    // Solo se vuelve atras ante un error duro; con conflictos interesa quedarse.
+    if result.is_err() {
+        if let Some(previous) = previous.filter(|p| p != destination) {
+            let _ = crate::git::refs::checkout(repo, &previous);
+        }
+    }
+
+    result
+}
+
 /// Fusiona `target` en la rama actual.
 pub fn merge(repo: &mut Repository, opts: MergeOptions2) -> AppResult<MergeResult> {
     let head_branch = repo
@@ -316,6 +352,18 @@ fn write_merge_state(repo: &Repository, target: git2::Oid, message: &str) -> App
     std::fs::write(git_dir.join("MERGE_MSG"), format!("{message}\n"))
         .map_err(|e| AppError::new(crate::error::ErrorKind::Io, format!("No se pudo escribir MERGE_MSG: {e}")))?;
     Ok(())
+}
+
+/// Mensaje que Git dejo en `MERGE_MSG`, sin las lineas de comentario.
+pub fn merge_message(repo: &Repository) -> Option<String> {
+    let contents = std::fs::read_to_string(repo.path().join("MERGE_MSG")).ok()?;
+    let cleaned = contents
+        .lines()
+        .filter(|line| !line.trim_start().starts_with('#'))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let cleaned = cleaned.trim().to_string();
+    (!cleaned.is_empty()).then_some(cleaned)
 }
 
 /// Aborta una fusion en curso, restaurando el estado previo.

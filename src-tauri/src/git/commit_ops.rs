@@ -41,6 +41,20 @@ fn resolve_parents<'r>(
         .collect()
 }
 
+/// Oids pendientes en `MERGE_HEAD` (una fusion sin cerrar).
+///
+/// Se lee el archivo directamente porque asi lo escribe `merge::write_merge_state`
+/// y porque `MERGE_HEAD` admite varios Oids (fusiones octopus).
+fn merge_head_oids(repo: &Repository) -> Vec<git2::Oid> {
+    let Ok(contents) = std::fs::read_to_string(repo.path().join("MERGE_HEAD")) else {
+        return Vec::new();
+    };
+    contents
+        .lines()
+        .filter_map(|line| line.trim().parse::<git2::Oid>().ok())
+        .collect()
+}
+
 /// Opciones de creacion de commit.
 pub struct CommitOptions<'a> {
     pub message: &'a str,
@@ -76,6 +90,11 @@ pub fn commit(repo: &Repository, opts: CommitOptions<'_>) -> AppResult<Operation
 
     let tree_oid = index.write_tree().map_err(AppError::from_git)?;
 
+    // Una fusion con conflictos deja `MERGE_HEAD`: el commit que la cierra debe
+    // tener dos padres, igual que `git commit` tras resolver. En un amend no
+    // aplica (se reutilizan los padres del commit original).
+    let merge_heads = if opts.amend { Vec::new() } else { merge_head_oids(repo) };
+
     // El amend reutiliza el arbol y los padres del commit original.
     let (tree, parents, target_oid) = if opts.amend {
         let target_rev = opts
@@ -103,11 +122,15 @@ pub fn commit(repo: &Repository, opts: CommitOptions<'_>) -> AppResult<Operation
             .ok()
             .and_then(|h| h.peel_to_commit().ok())
             .map(|c| c.id());
-        (tree, head_oid.into_iter().collect(), None)
+        let mut parents: Vec<git2::Oid> = head_oid.into_iter().collect();
+        parents.extend(merge_heads.iter().copied());
+        (tree, parents, None)
     };
 
     // Rechazar commits vacios salvo que se pidan explicitamente o sea un amend.
-    if !opts.allow_empty && !opts.amend {
+    // Un commit de fusion es valido aunque su arbol coincida con el primer
+    // padre (p. ej. resolviendo todo a favor de la rama actual).
+    if !opts.allow_empty && !opts.amend && merge_heads.is_empty() {
         let has_diff = match parents.first() {
             Some(parent_oid) => {
                 let parent_tree = repo
@@ -160,6 +183,11 @@ pub fn commit(repo: &Repository, opts: CommitOptions<'_>) -> AppResult<Operation
             repo.reference(&name, new_oid, true, "foxen: amend")
                 .map_err(AppError::from_git)?;
         }
+    }
+
+    // Cerrar la fusion: borra MERGE_HEAD/MERGE_MSG. No es fatal si falla.
+    if !merge_heads.is_empty() {
+        let _ = repo.cleanup_state();
     }
 
     if opts.sign {

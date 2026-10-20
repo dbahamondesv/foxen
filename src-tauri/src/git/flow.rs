@@ -347,20 +347,23 @@ fn merge_into(repo: &mut Repository, target: &str, branch: &str) -> AppResult<()
         },
     );
 
-    // Volver a la rama previa aunque la fusion falle, para no dejar al usuario
+    let merged = result?;
+    if !merged.success {
+        // Con conflictos NO se vuelve a la rama previa: los conflictos deben
+        // quedar en `target` para que Continuar/Abortar operen sobre la rama
+        // correcta (antes se volvia y el commit de cierre caia en la erronea).
+        return Err(AppError::invalid_state(format!(
+            "La fusion de {branch} en {target} tiene conflictos: {}",
+            merged.conflicted_files.join(", ")
+        )));
+    }
+
+    // Volver a la rama previa tras una fusion limpia, para no dejar al usuario
     // en un estado inesperado.
     if let Some(previous) = previous.filter(|p| p != target) {
         if repo.find_branch(&previous, git2::BranchType::Local).is_ok() {
             checkout(repo, &previous).ok();
         }
-    }
-
-    let merged = result?;
-    if !merged.success {
-        return Err(AppError::invalid_state(format!(
-            "La fusion de {branch} en {target} tiene conflictos: {}",
-            merged.conflicted_files.join(", ")
-        )));
     }
     Ok(())
 }

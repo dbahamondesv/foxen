@@ -535,9 +535,68 @@ pub async fn merge_branch(
     })
 }
 
+/// Fusiona `source` en `destination` (p. ej. `feature/x` -> `develop`),
+/// cambiando de rama si hace falta.
+#[tauri::command]
+pub async fn merge_into(
+    state: State<'_, AppState>,
+    repo_id: String,
+    source: String,
+    destination: String,
+    no_ff: bool,
+    ff_only: bool,
+    squash: bool,
+    message: Option<String>,
+) -> AppResult<MergeResult> {
+    with_repo_mut!(state, &repo_id, "fusionar rama", |repo| {
+        merge::merge_into(
+            repo,
+            &destination,
+            merge::MergeOptions2 {
+                target: source.clone(),
+                no_ff,
+                ff_only,
+                squash,
+                message,
+            },
+        )
+    })
+}
+
 #[tauri::command]
 pub async fn abort_merge(state: State<'_, AppState>, repo_id: String) -> AppResult<MergeResult> {
     with_repo_mut!(state, &repo_id, "abortar fusion", |repo| { merge::merge_abort(repo) })
+}
+
+/// Cierra una fusion en curso creando el commit de merge (dos padres).
+///
+/// Si no se pasa mensaje se reutiliza el de `MERGE_MSG` (lo escribe Git al
+/// iniciar la fusion). Es valido aunque no haya cambios: resolver todo a favor
+/// de la rama actual sigue siendo un merge de verdad.
+#[tauri::command]
+pub async fn merge_continue(
+    state: State<'_, AppState>,
+    repo_id: String,
+    message: Option<String>,
+) -> AppResult<OperationResult> {
+    with_repo_mut!(state, &repo_id, "continuar fusion", |repo| {
+        let message = message
+            .map(|m| m.trim().to_string())
+            .filter(|m| !m.is_empty())
+            .or_else(|| merge::merge_message(repo))
+            .unwrap_or_else(|| "Merge".to_string());
+        commit_ops::commit(
+            repo,
+            commit_ops::CommitOptions {
+                message: &message,
+                amend: false,
+                allow_empty: true,
+                sign: false,
+                staged_only: true,
+                target: None,
+            },
+        )
+    })
 }
 
 #[tauri::command]

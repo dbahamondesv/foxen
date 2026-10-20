@@ -104,7 +104,9 @@ pub fn run() {
             commands::resolve_conflict,
             // Merge y rebase
             commands::merge_branch,
+            commands::merge_into,
             commands::abort_merge,
+            commands::merge_continue,
             commands::plan_rebase,
             commands::rebase_onto,
             commands::rebase_continue,

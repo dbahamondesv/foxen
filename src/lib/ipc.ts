@@ -251,6 +251,29 @@ export const mergeBranch = (
 
 export const abortMerge = (repoId: string) => call<MergeResult>('abort_merge', { repoId });
 
+/** Fusiona `source` en `destination`, cambiando de rama si hace falta. */
+export const mergeInto = (
+  repoId: string,
+  source: string,
+  destination: string,
+  noFf = false,
+  ffOnly = false,
+  squash = false,
+  message: string | null = null,
+) =>
+  call<MergeResult>('merge_into', {
+    repoId,
+    source,
+    destination,
+    noFf,
+    ffOnly,
+    squash,
+    message,
+  });
+
+export const mergeContinue = (repoId: string, message: string | null = null) =>
+  call<OperationResult>('merge_continue', { repoId, message });
+
 export const planRebase = (repoId: string, onto: string, branch: string | null = null) =>
   call<RebasePlan>('plan_rebase', { repoId, onto, branch });
 

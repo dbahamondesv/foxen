@@ -63,6 +63,12 @@ export function ChangesPanel() {
     void run(`Descartar ${baseName(file.path)}`, () => ipc.discardFiles(repoId, [file.path]));
   };
 
+  /** Resuelve un archivo en conflicto (lado `ours`/`theirs`/`base` o staged). */
+  const resolve = (file: FileStatus, side: 'ours' | 'theirs' | 'base' | null) =>
+    void run(`Resolver ${baseName(file.path)}`, () =>
+      ipc.resolveConflict(repoId, file.path, side),
+    );
+
   const commit = () => {
     const message = commitMessage.trim();
     if (!message) {
@@ -167,6 +173,55 @@ export function ChangesPanel() {
                   </span>
 
                   {file.conflicted && <span className="badge badge-conflict">conflicto</span>}
+
+                  {file.conflicted && (
+                    <span className="conflict-actions">
+                      <button
+                        type="button"
+                        className="link"
+                        title="Quedarse con la version de la rama actual"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          resolve(file, 'ours');
+                        }}
+                      >
+                        mío
+                      </button>
+                      <button
+                        type="button"
+                        className="link"
+                        title="Quedarse con la version de la rama que se fusiona"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          resolve(file, 'theirs');
+                        }}
+                      >
+                        suyo
+                      </button>
+                      <button
+                        type="button"
+                        className="link"
+                        title="Restaurar la version base comun"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          resolve(file, 'base');
+                        }}
+                      >
+                        base
+                      </button>
+                      <button
+                        type="button"
+                        className="link"
+                        title="Marcar como resuelto usando el archivo tal como esta"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          resolve(file, null);
+                        }}
+                      >
+                        resuelto
+                      </button>
+                    </span>
+                  )}
 
                   <span className="file-stats">
                     {file.insertions > 0 && <span className="ins">+{file.insertions}</span>}

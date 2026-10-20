@@ -4,13 +4,13 @@ import { useStore, type SidePanel } from '../store/useAppStore';
 import * as ipc from '../lib/ipc';
 import { errorMessage } from '../lib/ipc';
 
-const PANELS: { id: SidePanel; label: string }[] = [
-  { id: 'changes', label: 'Cambios' },
-  { id: 'branches', label: 'Ramas' },
-  { id: 'stashes', label: 'Stashes' },
-  { id: 'remotes', label: 'Remotos' },
-  { id: 'flow', label: 'Git Flow' },
-  { id: 'reflog', label: 'Reflog' },
+const PANELS: { id: SidePanel; label: string; icon: string }[] = [
+  { id: 'changes', label: 'Cambios', icon: '📝' },
+  { id: 'branches', label: 'Ramas', icon: '🌿' },
+  { id: 'stashes', label: 'Stashes', icon: '📦' },
+  { id: 'remotes', label: 'Remotos', icon: '🌐' },
+  { id: 'flow', label: 'Flow', icon: '⚡' },
+  { id: 'reflog', label: 'Reflog', icon: '📜' },
 ];
 
 /** Selector de repositorio, abre el dialogo nativo del sistema. */
@@ -142,6 +142,11 @@ export function TopBar() {
 
   const stagedCount = status?.files.filter((f) => f.staged).length ?? 0;
 
+  const pullCurrent = () => {
+    if (!repoId) return;
+    void run('Pull', () => ipc.pullRemote(repoId, null, null, false, true, null));
+  };
+
   const fetchAll = () => {
     if (!repoId) return;
     void run('Fetch', () => ipc.fetchRemote(repoId, null, true, null));
@@ -211,25 +216,44 @@ export function TopBar() {
         >
           ⟳
         </button>
-        <button type="button" onClick={fetchAll} disabled={!repoId || loading}>
-          Fetch
+        <button
+          type="button"
+          className="topbar-action-btn"
+          onClick={pullCurrent}
+          disabled={!repoId || loading || !status?.hasUpstream}
+          title="Descargar cambios e integrarlos en la rama actual (Pull)"
+        >
+          <span className="btn-icon">⬇</span>
+          <span>Pull{status && status.behind > 0 ? ` ↓${status.behind}` : ''}</span>
         </button>
         <button
           type="button"
+          className="topbar-action-btn primary"
+          onClick={() => void run('Push', () => pushCurrent())}
+          disabled={!repoId || loading || !status?.headBranch}
+          title="Subir la rama actual al remoto (Push)"
+        >
+          <span className="btn-icon">⬆</span>
+          <span>Push{status && status.ahead > 0 ? ` ↑${status.ahead}` : ''}</span>
+        </button>
+        <button
+          type="button"
+          className="topbar-action-btn"
+          onClick={fetchAll}
+          disabled={!repoId || loading}
+          title="Consultar cambios en todos los remotos (Fetch)"
+        >
+          <span className="btn-icon">🔄</span>
+          <span>Fetch</span>
+        </button>
+        <button
+          type="button"
+          className="topbar-action-btn"
           onClick={commitStaged}
           disabled={!repoId || loading || stagedCount === 0 || !commitMessage.trim()}
           title="Crear un commit con lo que esta en stage (usa el mensaje del panel Cambios)"
         >
           Commit
-        </button>
-        <button
-          type="button"
-          className="primary"
-          onClick={() => void run('Push', () => pushCurrent())}
-          disabled={!repoId || loading || !status?.headBranch}
-          title="Subir la rama actual al remoto"
-        >
-          Push{status && status.ahead > 0 ? ` ↑${status.ahead}` : ''}
         </button>
         <button
           type="button"
@@ -308,7 +332,7 @@ export function PanelTabs() {
 
   return (
     <nav className="panel-tabs" role="tablist">
-      {PANELS.map(({ id, label }) => {
+      {PANELS.map(({ id, label, icon }) => {
         const badge = badgeFor(id);
         return (
           <button
@@ -319,7 +343,8 @@ export function PanelTabs() {
             className={`panel-tab${panel === id ? ' is-active' : ''}`}
             onClick={() => setPanel(id)}
           >
-            {label}
+            <span className="tab-icon">{icon}</span>
+            <span className="tab-label">{label}</span>
             {badge !== null && <span className="tab-badge">{badge}</span>}
           </button>
         );

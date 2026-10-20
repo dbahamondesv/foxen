@@ -3,12 +3,15 @@ import { ChangesPanel, DiffPanel } from './components/ChangesPanel';
 import { BranchesPanel, StashesPanel } from './components/BranchesPanel';
 import { FlowPanel, ReflogPanel, RemotesPanel } from './components/RemotesPanel';
 import { CommitDetailView } from './components/CommitDetail';
+import { ActivityFlow } from './components/ActivityFlow';
 import { TerminalPanel } from './components/TerminalPanel';
 import { PanelTabs, Toasts, TopBar } from './components/TopBar';
 import { SettingsPanel } from './components/SettingsPanel';
 import { GitHubAuthModal } from './components/GitHubAuthModal';
 import { GitHubReposModal } from './components/GitHubReposModal';
 import { PublishToGitHubModal } from './components/PublishToGitHubModal';
+import { MergeModal } from './components/MergeModal';
+import { OperationBanner } from './components/OperationBanner';
 import { useStore } from './store/useAppStore';
 import * as ipc from './lib/ipc';
 import { useEffect } from 'react';
@@ -36,7 +39,6 @@ export default function App() {
   const selectedDetail = useStore((s) => s.selectedDetail);
   const selectedFile = useStore((s) => s.selectedFile);
   const loading = useStore((s) => s.loading);
-  const status = useStore((s) => s.status);
   const settingsOpen = useStore((s) => s.settingsOpen);
   const terminalOpen = useStore((s) => s.terminalOpen);
   const sidebarOpen = useStore((s) => s.sidebarOpen);
@@ -49,6 +51,7 @@ export default function App() {
   const openPath = useStore((s) => s.openPath);
   const restoreSession = useStore((s) => s.restoreSession);
   const publishOpen = useStore((s) => s.publishOpen);
+  const mergeTarget = useStore((s) => s.mergeTarget);
 
   // En modo «seguir al sistema» hay que repintar cuando cambia la preferencia
   // del SO con la app abierta.
@@ -209,6 +212,8 @@ export default function App() {
     <div className="app">
       <TopBar />
 
+      <OperationBanner />
+
       <div className={`layout${sidebarOpen ? '' : ' sidebar-hidden'}`}>
         <aside className={`sidebar${sidebarOpen ? '' : ' is-hidden'}`}>
           <PanelTabs />
@@ -239,15 +244,8 @@ export default function App() {
         <aside className="inspector">
           {selectedDetail ? (
             <CommitDetailView />
-          ) : selectedFile ? (
-            <p className="empty">Diff abierto en el panel izquierdo.</p>
-          ) : status && !status.clean ? (
-            <p className="empty">
-              {status.files.length} archivo(s) con cambios. Usa el panel <strong>Cambios</strong>{' '}
-              para revisarlos.
-            </p>
           ) : (
-            <p className="empty">Selecciona un commit para ver su detalle.</p>
+            <ActivityFlow />
           )}
         </aside>
       </div>
@@ -258,6 +256,7 @@ export default function App() {
       {githubLoginOpen && <GitHubAuthModal />}
       {githubReposOpen && <GitHubReposModal />}
       {publishOpen && <PublishToGitHubModal />}
+      {mergeTarget && <MergeModal />}
       <Toasts />
     </div>
   );

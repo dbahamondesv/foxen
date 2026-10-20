@@ -305,3 +305,104 @@ kernel moderno y publicar paquetes que funcionen en más de una distribución.
   arrancar el contenedor; se añadió un reintento acotado.
 - El post-proceso del deb comprime con `xz`; el módulo flatpak pasa a usar
   `tar -xf data.tar.*` en lugar de asumir `.gz`.
+
+### Botones de commit/push y flujo de fusion en la UI
+
+Motivado por la falta de acciones visibles: el commit solo estaba en el panel
+Cambios y el push, como enlace diminuto por remoto. «Si no hay botón de commit
+y push, no sirve».
+
+#### Commit y push
+- **Barra superior** (`TopBar.tsx`): botones **Commit** (usa el mensaje del
+  panel Cambios; deshabilitado sin stage o sin mensaje) y **Push** (sube la
+  rama actual; muestra `Push ↑N` si hay commits pendientes).
+- **Panel Cambios** (`ChangesPanel.tsx`): botón **Commit y push** junto a
+  Commit.
+- **Store** (`useAppStore.ts`): accion `pushCurrent()` que resuelve el remoto
+  (el del upstream, si no `origin`, si no el primero), empuja la rama actual y
+  fija el upstream en el primer push (`set_upstream`).
+- Commit `c33ad8b` «Mejoras de botón commit , push» (hecho desde fuera del
+  agente).
+
+#### Fusion (merge) completa
+Antes solo existia el enlace `fusionar` (estrategia por defecto) y, ante
+conflictos, la UI se limitaba a avisar: habia que cerrar la fusion desde la
+terminal. Ahora:
+
+- **Backend**:
+  - `commit_ops::commit` cierra una fusion como Git: si hay `MERGE_HEAD` anade
+    sus Oids como padres adicionales (commit de merge real), permite el commit
+    aunque el arbol coincida con el primer padre y limpia `MERGE_HEAD`/
+    `MERGE_MSG` al terminar.
+  - Nuevo comando `merge_continue` (registrado en `lib.rs`) y helper
+    `merge::merge_message` (lee `MERGE_MSG` sin las lineas de comentario).
+- **Frontend**:
+  - `MergeModal.tsx`: al pulsar `fusionar` se elige estrategia (automatica,
+    merge commit `--no-ff`, solo fast-forward, squash) y mensaje del merge.
+  - `OperationBanner.tsx`: aviso bajo la barra superior cuando hay fusion o
+    rebase en curso, con **Continuar** (merge commit / reaplicar rebase),
+    **Saltar** (solo rebase) y **Abortar**.
+  - `ChangesPanel.tsx`: por cada archivo en conflicto, botones
+    `mio · suyo · base · resuelto` sobre `resolve_conflict`.
+  - Store: `mergeTarget` + `openMerge`/`closeMerge`; `ipc.mergeContinue`.
+- **Test**: `cerrar_merge_con_conflicto_crea_commit_de_dos_padres` verifica que
+  el commit de cierre tiene dos padres y que el estado de fusion queda limpio
+  (`git_integration` 34/34).
+
+#### Origen y destino en la fusion
+- El `merge` generico solo integrá la rama pulsada **en la actual**: para
+  `feat -> dev` habia que hacer checkout manual primero. Se anade:
+  - `MergeModal` con **selector de rama destino** (por defecto la actual y se
+    advierte si hay cambio de rama), de modo que `feature/x -> develop` es un
+    solo paso.
+  - Backend `merge::merge_into` + comando `merge_into`: cambia de rama si hace
+    falta, fusiona y **se queda en el destino**; ante error duro restaura la
+    rama de partida.
+- **Bug corregido** en Git Flow: `flow::merge_into` volvia a la rama anterior
+  aunque la fusion fallara por conflictos, dejando `develop` a medias y el
+  commit de cierre cayendo en la rama equivocada. Ahora, con conflictos, se
+  queda en la rama destino (que es la que deben usar Continuar/Abortar) y solo
+  vuelve si la fusion fue limpia.
+- **Test**: `merge_into_cambia_al_destino_y_fusiona` (`git_integration` 35/35).
+
+#### Verificación y paquetes
+- Gates: `cargo check`, `cargo test --lib` (9), `git_integration` (34),
+  `tsc --noEmit`, `eslint --max-warnings 0`, `vitest` (35) y `vite build`.
+- Reconstruidos deb (3,8 MB), rpm, AppImage (102 MB) y flatpak (reinstalado,
+  commit nuevo) para probar los botones.
+- Nota operativa: el `.deb` antiguo (`/usr/bin/foxen`) no contenia estos
+  cambios; el AppImage permite probarlos sin `sudo`.
+
+## 2026-10-20
+
+### Rediseño UI/UX: Líneas del Grafo y Nueva Interfaz Limpia (Estilo GitFiend)
+- **Análisis exhaustivo**: Documentado al detalle en `DIARIO_ANALISIS.md`.
+- **Grafo de commits (`CommitGraph.tsx`)**:
+  - Sustituido el trazado rígido en ángulo recto de 90° (`M x1 y1 V y2 H x2`) por geometría diagonal limpia (`M x1 y1 L x2 y2` y transiciones diagonales en merge y fork), creando rombos y bifurcaciones naturales como en GitFiend.
+  - Trazos esbeltos calibrados a `1.8px` (antes `2.4px`) con halo sutil semitransparente (`0.35`).
+  - Nodos circulares sólidos de `3.8px` con contorno de fondo y doble anillo concéntrico en el commit `HEAD`.
+- **Estructura y diseño de filas**:
+  - Eliminada la cabecera rígida de tabla (`.graph-head`) con tiradores de redimensionado que recortaba los mensajes.
+  - El asunto del commit ahora aprovecha todo el ancho disponible de forma fluida.
+  - Incorporadas pastillas (`.ref-pill`) estilo GitFiend: `✓ rama +1` con fondo teal para HEAD, borde punteado para `🏷️ tags` y pastillas suaves para ramas secundarias.
+  - Avatares circulares de autor (`.graph-avatar`) con su inicial (`F`, `D`) y paleta de color determinista (`authorColor`, `authorInitial`).
+  - Timestamp relativo sutil ("hace 3 meses") y short SHA con copia al portapapeles.
+- **TopBar y Acciones (`TopBar.tsx`, `styles.css`)**:
+  - Añadida acción directa de **Pull ⬇️** integrada con `ipc.pullRemote`, junto a **Push ⬆️** y **Fetch 🔄**.
+  - Pestañas laterales (`PanelTabs`) modernizadas con iconos temáticos (`📝`, `🌿`, `📦`, `🌐`, `⚡`, `📜`).
+  - Paleta en modo oscuro migrada de negro absoluto a grafito mate suave (`#18181c`, `#202127`) con bordes translúcidos y carriles cálidos desaturados.
+- **Detalle de Commit e Inspector (`CommitDetail.tsx`, `App.tsx`)**:
+  - Incorporado avatar de autor con color determinista en la cabecera del detalle.
+  - Estadísticas de inserción/deleción (`+N`, `−N`) como píldoras coloreadas.
+  - Botones unificados (`Cherry-pick`, `Revert`, `Resetear`) con iconos.
+  - Componente `.panel-empty-state` con iconos amigables y estados vacíos descansados.
+- **Panel de Cambios y Staging (`styles.css`)**:
+  - Celdas de estado (`.status-cell`) redondeadas y coloreadas con tinte translúcido.
+  - Filas de archivos interactivas con bordes suaves (`transition: all 0.12s ease`).
+- **Validación técnica**:
+  - `typecheck` OK (0 errores).
+  - `vitest` OK (37/37 tests pasando, incluidos nuevos tests de `authorInitial` y `authorColor`).
+  - `eslint` OK (0 warnings).
+  - `cargo check` OK (0.83s).
+  - `vite build` OK (bundle de producción generado correctamente en 5.69s).
+
