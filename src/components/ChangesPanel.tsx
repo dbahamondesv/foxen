@@ -62,12 +62,30 @@ export function ChangesPanel() {
 
   /** Rellena el mensaje con una propuesta generada a partir del stage. */
   const generateMessage = () => {
-    const suggestion = generateCommitMessage(staged);
-    if (!suggestion) {
+    if (staged.length === 0) {
       notify('info', 'Añade archivos al stage para generar un mensaje');
       return;
     }
-    setCommitMessage(suggestion);
+    void run('Generar mensaje', async () => {
+      // Se lee el diff del stage para describir el contenido real del cambio,
+      // no solo la lista de archivos.
+      const diff = await ipc.getDiff({
+        repoId,
+        side: 'staged',
+        path: null,
+        oldOid: null,
+        newOid: null,
+        includeContext: false,
+        context: 0,
+        maxFileBytes: 256 * 1024,
+      });
+      const suggestion = generateCommitMessage(staged, diff.files);
+      if (!suggestion) {
+        notify('info', 'Añade archivos al stage para generar un mensaje');
+        return;
+      }
+      setCommitMessage(suggestion);
+    });
   };
 
   const discard = (file: FileStatus) => {

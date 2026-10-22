@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { buildSummary, generateCommitMessage, inferScope, inferType } from './commitMessage';
-import type { ChangeKind, FileStatus } from './types';
+import {
+  buildSummary,
+  extractSignals,
+  generateCommitMessage,
+  inferScope,
+  inferType,
+} from './commitMessage';
+import type { ChangeKind, DiffHunk, FileDiff, FileStatus } from './types';
 
 function file(overrides: Partial<FileStatus>): FileStatus {
   return {
@@ -23,6 +29,38 @@ function file(overrides: Partial<FileStatus>): FileStatus {
 
 function kinded(path: string, kind: ChangeKind): FileStatus {
   return file({ path, kind });
+}
+
+/** Construye un `FileDiff` a partir de lineas `+`/`-`/` `. */
+function diff(path: string, lines: string[], kind: ChangeKind = 'modified'): FileDiff {
+  const hunk: DiffHunk = {
+    header: '@@ -1,1 +1,1 @@',
+    oldStart: 1,
+    oldLines: 1,
+    newStart: 1,
+    newLines: lines.length,
+    isBinary: false,
+    lines: lines.map((raw, i) => {
+      const origin = raw[0] ?? ' ';
+      return {
+        origin,
+        content: raw.slice(1),
+        oldLineno: origin === '+' ? null : i + 1,
+        newLineno: origin === '-' ? null : i + 1,
+      };
+    }),
+  };
+  return {
+    path,
+    oldPath: null,
+    isBinary: false,
+    tooLarge: false,
+    additions: lines.filter((l) => l.startsWith('+')).length,
+    deletions: lines.filter((l) => l.startsWith('-')).length,
+    hunks: [hunk],
+    raw: '',
+    kind,
+  };
 }
 
 describe('inferType', () => {
@@ -125,5 +163,66 @@ describe('generateCommitMessage', () => {
 
   it('devuelve cadena vacia sin archivos', () => {
     expect(generateCommitMessage([])).toBe('');
+  });
+});
+
+describe('extractSignals', () => {
+  it('detecta funciones y componentes anadidos', () => {
+    const signals = extractSignals([
+      diff('src/a.ts', ['+export function calcularTotal() {}', '+const helper = 1;']),
+    ]);
+    expect(signals.addedSymbols).toContain('calcularTotal');
+    expect(signals.addedSymbols).toContain('helper');
+  });
+
+  it('detecta imports nuevos', () => {
+    const signals = extractSignals([
+      diff('src/a.ts', ["+import { useState } from 'react';"]),
+    ]);
+    expect(signals.addedImports).toContain('react');
+  });
+
+  it('detecta dependencias en package.json', () => {
+    const signals = extractSignals([
+      diff('package.json', ['+  "zustand": "^5.0.0",'], 'modified'),
+    ]);
+    expect(signals.addedDeps).toContain('zustand');
+  });
+
+  it('marca eliminaciones y rutas de interfaz', () => {
+    const signals = extractSignals([
+      diff('src/components/Boton.tsx', ['-const viejo = 1;', '+const nuevo = 2;']),
+    ]);
+    expect(signals.hasRemovals).toBe(true);
+    expect(signals.touchesUi).toBe(true);
+  });
+
+  it('ignora la cabecera +++ del diff', () => {
+    const signals = extractSignals([diff('src/a.ts', ['+++ b/src/a.ts'])]);
+    expect(signals.addedSymbols).toHaveLength(0);
+    expect(signals.addedImports).toHaveLength(0);
+  });
+});
+
+describe('generateCommitMessage con diffs', () => {
+  it('describe el contenido en vez de solo listar archivos', () => {
+    const files = [kinded('src/calculos.ts', 'modified')];
+    const diffs = [diff('src/calculos.ts', ['+export function calcularTotal() {}'])];
+    const message = generateCommitMessage(files, diffs);
+    expect(message.split('\n')[0]).toBe('fix: corregir calcular total');
+  });
+
+  it('menciona dependencias nuevas en el cuerpo', () => {
+    const files = [kinded('package.json', 'modified')];
+    const diffs = [diff('package.json', ['+  "zustand": "^5.0.0",'])];
+    const message = generateCommitMessage(files, diffs);
+    expect(message).toContain('Dependencias: zustand');
+  });
+
+  it('cae al resumen por estado si el diff no da senales', () => {
+    const files = [kinded('src/a.ts', 'modified')];
+    const diffs = [diff('src/a.ts', ['+   '])];
+    const message = generateCommitMessage(files, diffs);
+    expect(message.split('\n')[0]).toBe('fix: modificar a.ts');
   });
 });

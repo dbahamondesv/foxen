@@ -1,6 +1,5 @@
 //! Estado del working tree, diffs y staging (incluido staging parcial por hunks).
 
-use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 
 use git2::{Delta, DiffOptions, IndexAddOption, Patch, Repository, Sort};
@@ -14,8 +13,6 @@ use crate::types::{
 
 /// Tamano maximo por defecto para no cargar diffs de archivos enormes.
 const DEFAULT_MAX_FILE_BYTES: u64 = 2 * 1024 * 1024;
-/// Limite de lineas por archivo para mantener el grafo fluido.
-const MAX_LINES_PER_FILE: usize = 20_000;
 
 // ---------------------------------------------------------------------------
 // Estado
@@ -477,6 +474,11 @@ pub fn diff(repo: &Repository, query: &DiffQuery) -> AppResult<DiffResult> {
 }
 
 /// Convierte un delta en un `FileDiff` con hunks y lineas parseadas.
+///
+/// Se apoya en `Patch::from_diff(&diff, index)`, que aisla el parche del delta
+/// indicado. Antes se recorria el diff completo con `foreach` y se recortaba
+/// por presupuesto de lineas: con varios archivos cada `FileDiff` terminaba
+/// mezclando lineas de otros deltas (stats y hunks corruptos).
 fn parse_delta(
     repo: &Repository,
     diff: &git2::Diff,
@@ -492,118 +494,61 @@ fn parse_delta(
 
     let is_binary = delta.old_file().is_binary() || delta.new_file().is_binary();
 
-    // `Diff::foreach` entrega `DiffHunk` y `DiffLine` estructurados. Sus tres
-    // callbacks se pasan a la vez como `&mut`, asi que el estado que comparten
-    // (contadores, parche y hunk en curso) vive en una `RefCell`.
-    let state = RefCell::new(PatchState {
-        line_budget: MAX_LINES_PER_FILE,
-        ..Default::default()
-    });
+    let mut additions = 0usize;
+    let mut deletions = 0usize;
+    let mut hunks: Vec<DiffHunk> = Vec::new();
+    let mut raw = String::new();
 
-    let hunk_cb = {
-        let state = &state;
-        move |_delta: git2::DiffDelta<'_>, hunk: git2::DiffHunk<'_>| {
-            let mut s = state.borrow_mut();
-            if s.line_budget == 0 {
-                return false;
-            }
+    // `from_diff` devuelve `None` para binarios (sin `show_binary`) o deltas
+    // sin cambios: en ambos casos no hay lineas que parsear.
+    match Patch::from_diff(diff, index) {
+        Ok(Some(patch)) => {
+            let num_hunks = patch.num_hunks();
+            for hunk_index in 0..num_hunks {
+                let (hunk, line_count) = patch
+                    .hunk(hunk_index)
+                    .map_err(AppError::from_git)?;
+                let header = String::from_utf8_lossy(hunk.header()).to_string();
+                raw.push_str(&header);
+                raw.push('\n');
 
-            let header = String::from_utf8_lossy(hunk.header()).to_string();
-            s.raw.push_str(&header);
-            s.raw.push('\n');
-
-            s.old_lineno = hunk.old_start() as usize;
-            s.new_lineno = hunk.new_start() as usize;
-
-            s.current = Some(DiffHunk {
-                header,
-                old_start: hunk.old_start() as usize,
-                old_lines: hunk.old_lines() as usize,
-                new_start: hunk.new_start() as usize,
-                new_lines: hunk.new_lines() as usize,
-                lines: Vec::new(),
-                is_binary: false,
-            });
-            true
-        }
-    };
-
-    let line_cb = {
-        let state = &state;
-        move |_delta: git2::DiffDelta<'_>,
-              _hunk: Option<git2::DiffHunk<'_>>,
-              line: git2::DiffLine<'_>| {
-            let mut s = state.borrow_mut();
-            if s.line_budget == 0 {
-                return false;
-            }
-
-            let origin = line.origin();
-            let content = String::from_utf8_lossy(line.content()).to_string();
-
-            match origin {
-                '+' | '-' | ' ' => {
-                    let (old_no, new_no) = match origin {
-                        '+' => {
-                            let no = s.new_lineno;
-                            s.new_lineno += 1;
-                            s.additions += 1;
-                            (None, Some(no))
-                        }
-                        '-' => {
-                            let no = s.old_lineno;
-                            s.old_lineno += 1;
-                            s.deletions += 1;
-                            (Some(no), None)
-                        }
-                        _ => {
-                            let o = s.old_lineno;
-                            let n = s.new_lineno;
-                            s.old_lineno += 1;
-                            s.new_lineno += 1;
-                            (Some(o), Some(n))
-                        }
-                    };
-
-                    if let Some(hunk) = s.current.as_mut() {
-                        hunk.lines.push(DiffLine {
-                            origin: origin_char(origin),
-                            content: content.clone(),
-                            old_lineno: old_no,
-                            new_lineno: new_no,
-                        });
+                let mut lines = Vec::with_capacity(line_count);
+                for line_index in 0..line_count {
+                    let line = patch
+                        .line_in_hunk(hunk_index, line_index)
+                        .map_err(AppError::from_git)?;
+                    let origin = line.origin();
+                    let content = String::from_utf8_lossy(line.content()).to_string();
+                    match origin {
+                        '+' => additions += 1,
+                        '-' => deletions += 1,
+                        _ => {}
                     }
-                    s.raw.push_str(&content);
-                    s.raw.push('\n');
-                    s.line_budget -= 1;
+                    raw.push_str(&content);
+                    raw.push('\n');
+                    lines.push(DiffLine {
+                        origin: origin_char(origin),
+                        content,
+                        old_lineno: line.old_lineno().map(|n| n as usize),
+                        new_lineno: line.new_lineno().map(|n| n as usize),
+                    });
                 }
-                'F' => {
-                    s.raw.push_str(&content);
-                    s.raw.push('\n');
-                }
-                _ => {}
+
+                hunks.push(DiffHunk {
+                    header,
+                    old_start: hunk.old_start() as usize,
+                    old_lines: hunk.old_lines() as usize,
+                    new_start: hunk.new_start() as usize,
+                    new_lines: hunk.new_lines() as usize,
+                    lines,
+                    is_binary: false,
+                });
             }
-            true
         }
-    };
-
-    let mut file_cb = |_delta: git2::DiffDelta<'_>, _total: f32| true;
-
-    let mut hunk_cb = hunk_cb;
-    let mut line_cb = line_cb;
-    let _ = diff.foreach(&mut file_cb, None, Some(&mut hunk_cb), Some(&mut line_cb));
-
-    let PatchState {
-        raw,
-        mut hunks,
-        additions,
-        deletions,
-        current,
-        ..
-    } = state.into_inner();
-
-    if let Some(hunk) = current {
-        hunks.push(hunk);
+        Ok(None) => {}
+        Err(error) => {
+            log::debug!("sin parche para {path}: {error}");
+        }
     }
 
     let _ = repo;
@@ -620,19 +565,6 @@ fn parse_delta(
         raw,
         kind: delta_kind(delta.status()),
     })
-}
-
-/// Estado compartido por los tres callbacks de `Diff::foreach`.
-#[derive(Default)]
-struct PatchState {
-    raw: String,
-    hunks: Vec<DiffHunk>,
-    additions: usize,
-    deletions: usize,
-    line_budget: usize,
-    current: Option<DiffHunk>,
-    old_lineno: usize,
-    new_lineno: usize,
 }
 
 /// Letra de la columna "staged" segun los flags de `Status`.

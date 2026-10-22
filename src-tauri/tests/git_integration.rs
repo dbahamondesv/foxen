@@ -247,6 +247,48 @@ fn diff_por_defecto_devuelve_todo_el_working_tree() {
     assert_eq!(diff.files.len(), 2, "sin ruta debe traer todos los archivos");
 }
 
+/// Regresion: el diff sin ruta debia separar correctamente cada archivo.
+///
+/// Antes `parse_delta` recorria el diff completo y recortaba por presupuesto de
+/// lineas, asi que cada `FileDiff` mezclaba lineas de otros deltas: los stats
+/// salian invertidos (un archivo nuevo con 0 inserciones) y los hunks no
+/// correspondian a su ruta.
+#[test]
+fn diff_sin_ruta_reparte_stats_por_archivo() {
+    let fixture = TestRepo::new("diff-stats");
+    fixture.write("base.txt", "linea\n");
+    fixture.commit_all("inicial");
+
+    // Archivo nuevo con tres lineas.
+    fixture.write("nuevo.txt", "uno\ndos\ntres\n");
+    // Archivo existente modificado (una linea anadida).
+    fixture.write("base.txt", "linea\nanadida\n");
+
+    let repo = fixture.open();
+    staging::stage_all(&repo).expect("stage");
+
+    let diff = staging::diff(&repo, &diff_query("r", DiffSide::Staged, None)).expect("diff");
+    assert_eq!(diff.files.len(), 2);
+
+    let nuevo = diff
+        .files
+        .iter()
+        .find(|f| f.path == "nuevo.txt")
+        .expect("nuevo.txt presente");
+    assert_eq!(nuevo.additions, 3, "el archivo nuevo aporta sus 3 inserciones");
+    assert_eq!(nuevo.deletions, 0);
+    assert!(!nuevo.hunks.is_empty());
+
+    let base = diff
+        .files
+        .iter()
+        .find(|f| f.path == "base.txt")
+        .expect("base.txt presente");
+    assert_eq!(base.additions, 1, "base.txt aporta solo su linea anadida");
+    assert_eq!(base.deletions, 0);
+}
+
+
 // ---------------------------------------------------------------------------
 // Commits
 // ---------------------------------------------------------------------------
