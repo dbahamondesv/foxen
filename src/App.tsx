@@ -2,8 +2,7 @@ import { CommitGraphView } from './components/CommitGraph';
 import { ChangesPanel, DiffPanel } from './components/ChangesPanel';
 import { BranchesPanel, StashesPanel } from './components/BranchesPanel';
 import { FlowPanel, ReflogPanel, RemotesPanel } from './components/RemotesPanel';
-import { CommitDetailView } from './components/CommitDetail';
-import { ActivityFlow } from './components/ActivityFlow';
+import { CommitDetailModal } from './components/CommitDetailModal';
 import { TerminalPanel } from './components/TerminalPanel';
 import { PanelTabs, Toasts, TopBar } from './components/TopBar';
 import { SettingsPanel } from './components/SettingsPanel';
@@ -36,8 +35,9 @@ export default function App() {
   const repoId = useStore((s) => s.repoId);
   const graph = useStore((s) => s.graph);
   const panel = useStore((s) => s.panel);
-  const selectedDetail = useStore((s) => s.selectedDetail);
+  const detailOpen = useStore((s) => s.detailOpen);
   const selectedFile = useStore((s) => s.selectedFile);
+  const selectedSide = useStore((s) => s.selectedSide);
   const loading = useStore((s) => s.loading);
   const settingsOpen = useStore((s) => s.settingsOpen);
   const terminalOpen = useStore((s) => s.terminalOpen);
@@ -72,6 +72,7 @@ export default function App() {
   useEffect(() => {
     let timer: number | undefined;
     let unlisten: (() => void) | undefined;
+    let cancelled = false;
     const schedule = () => {
       window.clearTimeout(timer);
       timer = window.setTimeout(() => {
@@ -84,9 +85,13 @@ export default function App() {
         if (id === useStore.getState().repoId) schedule();
       })
       .then((fn) => {
-        unlisten = fn;
+        // Si el efecto ya se limpio antes de resolverse la promesa, se quita el
+        // listener en el acto para no dejarlo colgado (StrictMode monta dos veces).
+        if (cancelled) fn();
+        else unlisten = fn;
       });
     return () => {
+      cancelled = true;
       window.clearTimeout(timer);
       unlisten?.();
     };
@@ -130,6 +135,7 @@ export default function App() {
   // a la instancia abierta. Se pide la carpeta destino y se clona.
   useEffect(() => {
     let unlisten: (() => void) | undefined;
+    let cancelled = false;
     const startClone = async (url: string) => {
       try {
         const parent = await open({
@@ -151,9 +157,13 @@ export default function App() {
     };
     drain();
     void ipc.onCloneRequest(drain).then((fn) => {
-      unlisten = fn;
+      if (cancelled) fn();
+      else unlisten = fn;
     });
-    return () => unlisten?.();
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
   }, []);
 
   const handleBrowseLocal = async () => {
@@ -205,8 +215,11 @@ export default function App() {
     );
   }
 
-  /** El diff del archivo seleccionado tiene prioridad sobre la lista de paneles. */
-  const showDiff = selectedFile !== null && selectedDetail === null;
+  /**
+   * El diff del archivo seleccionado tiene prioridad sobre la lista de paneles.
+   * Los diffs de commits viven en el popup de detalle, no en la barra lateral.
+   */
+  const showDiff = selectedFile !== null && selectedSide !== 'commit';
 
   return (
     <div className="app">
@@ -217,13 +230,15 @@ export default function App() {
       <div className={`layout${sidebarOpen ? '' : ' sidebar-hidden'}`}>
         <aside className={`sidebar${sidebarOpen ? '' : ' is-hidden'}`}>
           <PanelTabs />
-          {panel === 'changes' && !showDiff && <ChangesPanel />}
-          {panel === 'branches' && <BranchesPanel />}
-          {panel === 'stashes' && <StashesPanel />}
-          {panel === 'remotes' && <RemotesPanel />}
-          {panel === 'flow' && <FlowPanel />}
-          {panel === 'reflog' && <ReflogPanel />}
-          {showDiff && <DiffPanel />}
+          <div className="sidebar-content">
+            {panel === 'changes' && !showDiff && <ChangesPanel />}
+            {panel === 'branches' && <BranchesPanel />}
+            {panel === 'stashes' && <StashesPanel />}
+            {panel === 'remotes' && <RemotesPanel />}
+            {panel === 'flow' && <FlowPanel />}
+            {panel === 'reflog' && <ReflogPanel />}
+            {showDiff && <DiffPanel />}
+          </div>
         </aside>
 
         <main className="main">
@@ -241,13 +256,6 @@ export default function App() {
           )}
         </main>
 
-        <aside className="inspector">
-          {selectedDetail ? (
-            <CommitDetailView />
-          ) : (
-            <ActivityFlow />
-          )}
-        </aside>
       </div>
 
       {terminalOpen && <TerminalPanel key={repoId} />}
@@ -257,6 +265,7 @@ export default function App() {
       {githubReposOpen && <GitHubReposModal />}
       {publishOpen && <PublishToGitHubModal />}
       {mergeTarget && <MergeModal />}
+      {detailOpen && <CommitDetailModal />}
       <Toasts />
     </div>
   );

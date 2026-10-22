@@ -115,14 +115,16 @@ export function TerminalPanel() {
       if (message.data) term.write(decodeBase64(message.data));
     });
 
-    let started = false;
+    let startPromise: Promise<void> | null = null;
     const start = () => {
       fit.fit();
       const { cols, rows } = term;
-      void ipc.startPty(repoId, cwd, cols, rows, channel).catch((error) => {
+      // Se guarda la promesa de arranque: el cleanup espera a que termine antes
+      // de parar, si no `stop_pty` puede llegar antes de que la sesion exista y
+      // el shell queda huerfano.
+      startPromise = ipc.startPty(repoId, cwd, cols, rows, channel).catch((error) => {
         notify('error', errorMessage(error));
       });
-      started = true;
     };
     // `fit` necesita una medida real del DOM: se espera al primer layout.
     const frame = requestAnimationFrame(start);
@@ -146,8 +148,11 @@ export function TerminalPanel() {
       cancelAnimationFrame(frame);
       observer.disconnect();
       dataDisposable.dispose();
-      // Solo se mata si llego a arrancar: si no, no hay nada que cerrar.
-      if (started) void ipc.stopPty(repoId).catch(() => undefined);
+      // Solo se mata si llego a arrancar. Se espera a que la promesa de arranque
+      // se resuelva para que `stopPty` no compita con `startPty`.
+      if (startPromise) {
+        void startPromise.finally(() => ipc.stopPty(repoId).catch(() => undefined));
+      }
       term.dispose();
       termRef.current = null;
     };

@@ -108,6 +108,19 @@ pub fn merge(repo: &mut Repository, opts: MergeOptions2) -> AppResult<MergeResul
             ));
         };
 
+        // Como git, no se pisa un working tree con cambios: el checkout de un
+        // fast-forward sobreescribiria archivos locales sin avisar.
+        let current = staging::status(repo)?;
+        if !current.clean {
+            return Err(AppError::invalid_state(
+                "Hay cambios sin commitear; guardalos o descartalos antes del fast-forward",
+            )
+            .with_detail(format!(
+                "{} archivo(s) con cambios pendientes",
+                current.files.len()
+            )));
+        }
+
         let full_ref = format!("refs/heads/{branch}");
         repo.reference(&full_ref, target.id(), true, "foxen: fast-forward merge")
             .map_err(AppError::from_git)?;
@@ -238,18 +251,26 @@ pub fn merge(repo: &mut Repository, opts: MergeOptions2) -> AppResult<MergeResul
         .message
         .unwrap_or_else(|| format!("Merge branch '{}' into {}", opts.target, head_branch.clone().unwrap_or_default()));
 
-    // Un commit de fusion tiene DOS padres: HEAD y la rama integrada.
-    let parent_refs: Vec<&git2::Commit<'_>> = vec![&head, &target];
-
-    let new_oid = repo
-        .commit(Some("HEAD"), &sig, &sig, &message, &tree, &parent_refs)
-        .map_err(AppError::from_git)?;
+    // Squash: un unico commit con el arbol integrado y solo HEAD como padre; no
+    // se registra la rama integrada, igual que `git merge --squash`.
+    let new_oid = if opts.squash {
+        repo.commit(Some("HEAD"), &sig, &sig, &message, &tree, &[&head])
+            .map_err(AppError::from_git)?
+    } else {
+        // Un commit de fusion tiene DOS padres: HEAD y la rama integrada.
+        repo.commit(Some("HEAD"), &sig, &sig, &message, &tree, &[&head, &target])
+            .map_err(AppError::from_git)?
+    };
 
     Ok(MergeResult {
         success: true,
         new_commits: vec![new_oid.to_string()],
         conflicted_files: Vec::new(),
-        message: "Commit de fusion creado".to_string(),
+        message: if opts.squash {
+            "Commit squash creado".to_string()
+        } else {
+            "Commit de fusion creado".to_string()
+        },
         status: staging::status(repo)?,
         needs_continue: false,
         rebase_steps_left: 0,
@@ -299,7 +320,9 @@ fn write_conflict_markers(
     let mut paths = Vec::new();
     for (ancestor, ours, theirs, raw_path) in entries {
         let path = String::from_utf8_lossy(raw_path).to_string();
-        let full = workdir.join(&path);
+        let Ok(full) = crate::git::util::safe_worktree_path(workdir, &path) else {
+            continue;
+        };
 
         let read_side = |entry: &Option<git2::IndexEntry>| -> Option<String> {
             let oid = entry.as_ref()?.id;
@@ -316,14 +339,32 @@ fn write_conflict_markers(
         let ours_text = ours.as_ref().and_then(|_| read_side(ours));
         let theirs_text = theirs.as_ref().and_then(|_| read_side(theirs));
 
+        // Las lineas de marcador deben empezar en una linea propia: si un lado
+        // no termina en salto de linea, se anade antes del separador/cierre.
+        let ensure_newline = |text: String| -> String {
+            if text.ends_with('\n') {
+                text
+            } else {
+                format!("{text}\n")
+            }
+        };
+
         let content = match (ours_text, theirs_text) {
             (Some(o), Some(t)) => Some(format!(
-                "<<<<<<< HEAD\n{o}=======\n{t}>>>>>>> {target_label}\n"
+                "<<<<<<< HEAD\n{}=======\n{}>>>>>>> {target_label}\n",
+                ensure_newline(o),
+                ensure_newline(t)
             )),
             // Solo hay dos versiones (add/add o modify/delete): se marca igual
             // que hace git para que quede constancia del conflicto.
-            (Some(o), None) => Some(format!("<<<<<<< HEAD\n{o}=======\n>>>>>>> {target_label}\n")),
-            (None, Some(t)) => Some(format!("<<<<<<< HEAD\n=======\n{t}>>>>>>> {target_label}\n")),
+            (Some(o), None) => Some(format!(
+                "<<<<<<< HEAD\n{}=======\n>>>>>>> {target_label}\n",
+                ensure_newline(o)
+            )),
+            (None, Some(t)) => Some(format!(
+                "<<<<<<< HEAD\n=======\n{}>>>>>>> {target_label}\n",
+                ensure_newline(t)
+            )),
             (None, None) => None,
         };
 
@@ -562,7 +603,7 @@ pub fn rebase(repo: &mut Repository, onto: &str, force: bool) -> AppResult<Merge
     })
 }
 
-/// Marca la rama actual como completada tras resolver conflictos.
+/// Reanuda un rebase detenido por conflictos tras resolverlos.
 pub fn rebase_continue(repo: &mut Repository) -> AppResult<MergeResult> {
     let status = staging::status(repo)?;
     if status.conflicted_count > 0 {
@@ -572,50 +613,114 @@ pub fn rebase_continue(repo: &mut Repository) -> AppResult<MergeResult> {
         )));
     }
 
+    if !rebase_in_progress(repo) {
+        return Err(AppError::invalid_state("No hay ningun rebase en curso"));
+    }
+
     let sig = crate::git::commit_ops::signature(repo)?;
-    let head = repo
-        .head()
-        .map_err(AppError::from_git)?
-        .peel_to_commit()
+
+    let mut opts = git2::RebaseOptions::new();
+    opts.inmemory(false);
+    let mut rebase = repo
+        .open_rebase(Some(&mut opts))
         .map_err(AppError::from_git)?;
 
-    let mut index = repo.index().map_err(AppError::from_git)?;
-    let tree_oid = index.write_tree().map_err(AppError::from_git)?;
-    let tree = repo.find_tree(tree_oid).map_err(AppError::from_git)?;
-    let parent_commits: Vec<git2::Commit<'_>> = vec![head];
-    let parent_refs: Vec<&git2::Commit<'_>> = parent_commits.iter().collect();
+    let total = rebase.len();
+    // Consolida el paso conflictivo ya resuelto en el indice.
+    rebase
+        .commit(None, &sig, None)
+        .map_err(|e| AppError::from_git(e).with_detail("No se pudo consolidar el paso resuelto"))?;
 
-    let new_oid = repo
-        .commit(
-            Some("HEAD"),
-            &sig,
-            &sig,
-            "Rebase: resolucion de conflictos",
-            &tree,
-            &parent_refs,
-        )
-        .map_err(AppError::from_git)?;
+    let mut applied = 0usize;
+    while let Some(operation) = rebase.next() {
+        let operation = operation.map_err(|e| {
+            AppError::from_git(e).with_detail("El rebase se detuvo de forma inesperada")
+        })?;
+        match rebase.commit(None, &sig, None) {
+            Ok(_) => applied += 1,
+            Err(err) => {
+                let conflicts = conflicted_paths(repo);
+                if conflicts.is_empty() {
+                    return Err(AppError::from_git(err));
+                }
+                let step = rebase.operation_current().unwrap_or(applied + 1);
+                return Ok(MergeResult {
+                    success: false,
+                    new_commits: Vec::new(),
+                    conflicted_files: conflicts,
+                    message: format!(
+                        "Rebase detenido en el paso {step} de {total}. Resuelve los conflictos, stagea y usa 'rebase --continue'."
+                    ),
+                    status: staging::status(repo)?,
+                    needs_continue: true,
+                    rebase_steps_left: total.saturating_sub(applied),
+                });
+            }
+        }
+        let _ = operation.id();
+    }
 
+    rebase.finish(None).map_err(AppError::from_git)?;
+
+    let new_head = repo.head().ok().and_then(|h| h.target());
     Ok(MergeResult {
         success: true,
-        new_commits: vec![new_oid.to_string()],
+        new_commits: new_head.map(|o| vec![o.to_string()]).unwrap_or_default(),
         conflicted_files: Vec::new(),
-        message: "Rebase continuado".to_string(),
+        message: format!("Rebase completado: {applied} commit(s) reaplicados"),
         status: staging::status(repo)?,
         needs_continue: false,
         rebase_steps_left: 0,
     })
 }
 
-/// Descarta el commit conflictivo actual del rebase.
+/// Descarta el commit conflictivo actual del rebase y reanuda el resto.
 pub fn rebase_skip(repo: &mut Repository) -> AppResult<MergeResult> {
-    let head = repo
-        .head()
-        .map_err(AppError::from_git)?
-        .peel_to_commit()
+    if !rebase_in_progress(repo) {
+        return Err(AppError::invalid_state("No hay ningun rebase en curso"));
+    }
+
+    let sig = crate::git::commit_ops::signature(repo)?;
+
+    let mut opts = git2::RebaseOptions::new();
+    opts.inmemory(false);
+    let mut rebase = repo
+        .open_rebase(Some(&mut opts))
         .map_err(AppError::from_git)?;
-    repo.reset(head.as_object(), git2::ResetType::Hard, None)
-        .map_err(AppError::from_git)?;
+
+    let total = rebase.len();
+    // El paso actual se descarta sin commitear; se limpia el arbol para el
+    // siguiente (reset del paso conflictivo a HEAD del rebase).
+    let mut applied = 0usize;
+    while let Some(operation) = rebase.next() {
+        let operation = operation.map_err(|e| {
+            AppError::from_git(e).with_detail("El rebase se detuvo de forma inesperada")
+        })?;
+        match rebase.commit(None, &sig, None) {
+            Ok(_) => applied += 1,
+            Err(err) => {
+                let conflicts = conflicted_paths(repo);
+                if conflicts.is_empty() {
+                    return Err(AppError::from_git(err));
+                }
+                let step = rebase.operation_current().unwrap_or(applied + 1);
+                return Ok(MergeResult {
+                    success: false,
+                    new_commits: Vec::new(),
+                    conflicted_files: conflicts,
+                    message: format!(
+                        "Rebase detenido en el paso {step} de {total}. Resuelve los conflictos, stagea y usa 'rebase --continue'."
+                    ),
+                    status: staging::status(repo)?,
+                    needs_continue: true,
+                    rebase_steps_left: total.saturating_sub(applied),
+                });
+            }
+        }
+        let _ = operation.id();
+    }
+
+    rebase.finish(None).map_err(AppError::from_git)?;
     Ok(MergeResult {
         success: true,
         new_commits: Vec::new(),
@@ -627,15 +732,21 @@ pub fn rebase_skip(repo: &mut Repository) -> AppResult<MergeResult> {
     })
 }
 
-/// Aborta un rebase en curso.
+/// Aborta un rebase en curso y restaura el estado original.
 pub fn rebase_abort(repo: &mut Repository) -> AppResult<MergeResult> {
-    let head = repo
-        .head()
-        .map_err(AppError::from_git)?
-        .peel_to_commit()
+    if !rebase_in_progress(repo) {
+        return Err(AppError::invalid_state("No hay ningun rebase en curso"));
+    }
+
+    let mut opts = git2::RebaseOptions::new();
+    opts.inmemory(false);
+    let mut rebase = repo
+        .open_rebase(Some(&mut opts))
         .map_err(AppError::from_git)?;
-    repo.reset(head.as_object(), git2::ResetType::Hard, None)
-        .map_err(AppError::from_git)?;
+
+    // `abort` restaura la rama original y limpia todo el estado del rebase.
+    rebase.abort().map_err(AppError::from_git)?;
+
     Ok(MergeResult {
         success: true,
         new_commits: Vec::new(),

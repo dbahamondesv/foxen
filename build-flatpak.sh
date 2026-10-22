@@ -17,7 +17,7 @@ set -euo pipefail
 cd "$(dirname "$0")"
 ROOT="$(pwd)"
 
-MANIFEST="$ROOT/packaging/com.foxbuntu.foxen.yaml"
+MANIFEST="$ROOT/packaging/io.github.dbahamondesv.foxen.yaml"
 REPO="$ROOT/flatpak-repo"
 BUILD_DIR="$ROOT/build-dir"
 BUNDLE="$ROOT/foxen.flatpak"

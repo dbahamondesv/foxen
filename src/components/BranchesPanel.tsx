@@ -9,7 +9,7 @@ export function BranchesPanel() {
   const repoId = useStore((s) => s.repoId);
   const branches = useStore((s) => s.branches);
   const run = useStore((s) => s.run);
-  const selectCommit = useStore((s) => s.selectCommit);
+  const openDetail = useStore((s) => s.openDetail);
   const openMerge = useStore((s) => s.openMerge);
 
   const [filter, setFilter] = useState('');
@@ -56,7 +56,7 @@ export function BranchesPanel() {
       <button
         type="button"
         className="branch-name"
-        onClick={() => void selectCommit(branch.oid)}
+        onClick={() => openDetail(branch.oid)}
         title={branch.subject}
       >
         {branch.name}
@@ -146,7 +146,6 @@ export function StashesPanel() {
   const repoId = useStore((s) => s.repoId);
   const stashes = useStore((s) => s.stashes);
   const run = useStore((s) => s.run);
-  const notify = useStore((s) => s.notify);
 
   const [message, setMessage] = useState('');
   const [includeUntracked, setIncludeUntracked] = useState(true);
@@ -263,7 +262,14 @@ export function StashesPanel() {
         Los stashes se guardan con los indices que devuelve el backend; si eliminas uno, los
         indices se recalculan en el siguiente refresco.
       </p>
-      <button type="button" className="link" onClick={() => notify('info', 'Refrescado') }>
+      <button
+        type="button"
+        className="link"
+        onClick={() => {
+          const refresh = useStore.getState().refreshStashes;
+          void refresh().catch(() => undefined);
+        }}
+      >
         Refrescar
       </button>
     </div>

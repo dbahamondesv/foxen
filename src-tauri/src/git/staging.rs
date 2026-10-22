@@ -1,9 +1,9 @@
 //! Estado del working tree, diffs y staging (incluido staging parcial por hunks).
 
 use std::cell::RefCell;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
-use git2::{Delta, DiffOptions, IndexAddOption, Repository, Sort};
+use git2::{Delta, DiffOptions, IndexAddOption, Patch, Repository, Sort};
 
 use crate::error::{AppError, AppResult};
 use crate::git::util::{change_kind, native_path};
@@ -21,21 +21,24 @@ const MAX_LINES_PER_FILE: usize = 20_000;
 // Estado
 // ---------------------------------------------------------------------------
 
-/// Calcula el estado completo del repositorio.
-/// Devuelve los archivos del working tree que contienen marcadores de conflicto.
-///
-/// Hace falta porque `git_merge_commits` de libgit2 borra las etapas 1/2/3 del
-/// indice al terminar, de modo que `index.conflicts()` sale vacio aunque el
-/// merge haya fallado. Los marcadores en disco son la unica fuente fiable.
 pub fn conflicted_paths_in_workdir(repo: &Repository) -> Vec<String> {
     // Solo tiene sentido barrer cuando hay una operacion a medias.
     if repo.state() == git2::RepositoryState::Clean {
         return Vec::new();
     }
-    let Some(workdir) = repo.workdir() else {
+    let Ok(statuses) = repo.statuses(Some(&mut git2::StatusOptions::new())) else {
         return Vec::new();
     };
-    let Ok(statuses) = repo.statuses(Some(&mut git2::StatusOptions::new())) else {
+    conflict_markers_in(repo, &statuses)
+}
+
+/// Rutas con marcadores de conflicto completos (`<<<<<<<` + `>>>>>>>`).
+///
+/// Hace falta porque `git_merge_commits` de libgit2 borra las etapas 1/2/3 del
+/// indice al terminar, de modo que `index.conflicts()` sale vacio aunque el
+/// merge haya fallado. Los marcadores en disco son la unica fuente fiable.
+fn conflict_markers_in(repo: &Repository, statuses: &git2::Statuses) -> Vec<String> {
+    let Some(workdir) = repo.workdir() else {
         return Vec::new();
     };
 
@@ -54,7 +57,10 @@ pub fn conflicted_paths_in_workdir(repo: &Repository) -> Vec<String> {
         {
             continue;
         }
-        let Ok(content) = std::fs::read_to_string(workdir.join(path)) else {
+        let Ok(full) = crate::git::util::safe_worktree_path(workdir, path) else {
+            continue;
+        };
+        let Ok(content) = std::fs::read_to_string(&full) else {
             continue;
         };
         // Se exige la pareja completa de marcadores de apertura y cierre para no
@@ -68,6 +74,9 @@ pub fn conflicted_paths_in_workdir(repo: &Repository) -> Vec<String> {
     found
 }
 
+/// Calcula el estado completo del repositorio en dos pasadas de diff (staged y
+/// worktree), en lugar de un diff por archivo, que era O(N) paseos del arbol
+/// dentro de la retencion del candado de git y congelaba la app al abrir.
 pub fn status(repo: &Repository) -> AppResult<RepoStatus> {
     let mut options = git2::StatusOptions::new();
     options
@@ -94,7 +103,24 @@ pub fn status(repo: &Repository) -> AppResult<RepoStatus> {
 
     // libgit2 borra las etapas de conflicto del indice, asi que los conflictos
     // se detectan tambien por los marcadores que quedaron en el working tree.
-    let marker_conflicts = conflicted_paths_in_workdir(repo);
+    // Se reutiliza `statuses` en vez de volver a barrer el repositorio.
+    let marker_conflicts = if repo.state() != git2::RepositoryState::Clean {
+        conflict_markers_in(repo, &statuses)
+    } else {
+        Vec::new()
+    };
+
+    // Estadisticas por archivo en dos paseos globales (HEAD vs indice, indice
+    // vs worktree) en vez de un `diff` completo por cada entrada del status.
+    // Con el arbol limpio no hay nada que medir: se saltan los paseos.
+    let (staged_stats, worktree_stats) = if statuses.is_empty() {
+        (HashMap::new(), HashMap::new())
+    } else {
+        (
+            bulk_diff_stats(repo, DiffKind::Staged),
+            bulk_diff_stats(repo, DiffKind::Worktree),
+        )
+    };
 
     let mut files: Vec<FileStatus> = Vec::with_capacity(statuses.len());
     let mut staged_count = 0usize;
@@ -141,7 +167,13 @@ pub fn status(repo: &Repository) -> AppResult<RepoStatus> {
                     .filter(|s| !s.is_empty())
             });
 
-        let (insertions, deletions, is_binary) = delta_stats(repo, index_status, worktree_status, path);
+        // Estadisticas ya calculadas en los dos paseos globales; se prefiere el
+        // lado staged cuando la entrada lo tiene, como hacia `delta_stats`.
+        let (insertions, deletions, is_binary) = if staged {
+            staged_stats.get(path).copied().unwrap_or((0, 0, false))
+        } else {
+            worktree_stats.get(path).copied().unwrap_or((0, 0, false))
+        };
 
         files.push(FileStatus {
             path: path.to_string(),
@@ -227,36 +259,83 @@ pub fn upstream_relation(repo: &Repository) -> (usize, usize, Option<String>) {
     (ahead, behind, Some(name))
 }
 
-/// Lineas anadidas/eliminadas de un archivo, detectando binarios.
-fn delta_stats(
-    repo: &Repository,
-    index_status: char,
-    worktree_status: char,
-    path: &str,
-) -> (usize, usize, bool) {
-    let query = DiffQuery {
-        repo_id: String::new(),
-        side: if index_status != ' ' && index_status != '\0' {
-            DiffSide::Staged
-        } else {
-            DiffSide::Worktree
-        },
-        path: Some(path.to_string()),
-        old_oid: None,
-        new_oid: None,
-        include_context: false,
-        context: 0,
-        max_file_bytes: None,
+/// lado de un diff global de estadisticas.
+#[derive(Clone, Copy)]
+enum DiffKind {
+    /// HEAD contra el indice (cambios ya staged).
+    Staged,
+    /// Indice contra el working tree (cambios sin staged).
+    Worktree,
+}
+
+/// Lineas anadidas/eliminadas y binariedad por archivo, en UNA sola pasada de
+/// diff global. Sustituye al antiguo `delta_stats`, que abria un diff completo
+/// por archivo (O(N) paseos del arbol) y congelaba la app en repos grandes.
+fn bulk_diff_stats(repo: &Repository, kind: DiffKind) -> HashMap<String, (usize, usize, bool)> {
+    let mut opts = DiffOptions::new();
+    opts.ignore_submodules(true).show_binary(false);
+
+    let diff = match kind {
+        DiffKind::Staged => {
+            let head_tree = repo.head().ok().and_then(|h| h.peel_to_tree().ok());
+            match repo.diff_tree_to_index(head_tree.as_ref(), None, Some(&mut opts)) {
+                Ok(diff) => diff,
+                Err(error) => {
+                    log::warn!("diff staged para estadisticas: {error}");
+                    return HashMap::new();
+                }
+            }
+        }
+        DiffKind::Worktree => {
+            opts.include_untracked(true).recurse_untracked_dirs(true);
+            match repo.diff_index_to_workdir(None, Some(&mut opts)) {
+                Ok(diff) => diff,
+                Err(error) => {
+                    log::warn!("diff worktree para estadisticas: {error}");
+                    return HashMap::new();
+                }
+            }
+        }
     };
-    let _ = worktree_status;
-    match diff(repo, &query) {
-        Ok(result) => result
-            .files
-            .first()
-            .map(|f| (f.additions, f.deletions, f.is_binary))
-            .unwrap_or((0, 0, false)),
-        Err(_) => (0, 0, false),
+
+    let mut stats = HashMap::with_capacity(diff.deltas().len());
+    for index in 0..diff.deltas().len() {
+        let Some(delta) = diff.get_delta(index) else {
+            continue;
+        };
+        let Some(path) = delta.new_file().path().or_else(|| delta.old_file().path()) else {
+            continue;
+        };
+        let path = path.to_string_lossy().to_string();
+
+        // Archivos enormes: sin estadisticas (el panel las muestra vacias).
+        let size = delta.new_file().size().max(delta.old_file().size());
+        if size > DEFAULT_MAX_FILE_BYTES {
+            stats.insert(path, (0, 0, false));
+            continue;
+        }
+
+        match Patch::from_diff(&diff, index) {
+            Ok(Some(patch)) => {
+                let entry = match patch.line_stats() {
+                    Ok((added, deleted, _tokens)) => (added, deleted, false),
+                    Err(_) => (0, 0, false),
+                };
+                stats.insert(path, entry);
+            }
+            // `from_diff` devuelve None para binarios (sin show_binary) o sin
+            // cambios: el flag binario del delta distingue uno de otro.
+            Ok(None) => {
+                let binary = delta.flags().contains(git2::DiffFlags::BINARY);
+                stats.insert(path, (0, 0, binary));
+            }
+            Err(error) => {
+                log::debug!("sin stats para {path}: {error}");
+                stats.insert(path, (0, 0, false));
+            }
+        }
     }
+    stats
 }
 
 // ---------------------------------------------------------------------------
@@ -619,7 +698,7 @@ pub fn stage(repo: &Repository, paths: &[String]) -> AppResult<usize> {
     let mut affected = 0usize;
 
     for path in paths {
-        let full = repo_workdir(repo).join(native_path(path));
+        let full = crate::git::util::safe_worktree_path(&repo_workdir(repo), path)?;
         let entry = if full.exists() {
             Some(full.clone())
         } else {
@@ -710,7 +789,7 @@ pub fn discard(repo: &Repository, paths: &[String]) -> AppResult<usize> {
             .map(|tree| tree.get_path(std::path::Path::new(&relative)).is_ok())
             .unwrap_or(false);
 
-        let full = repo_workdir(repo).join(&relative);
+        let full = crate::git::util::safe_worktree_path(&repo_workdir(repo), path)?;
         if !exists_in_head {
             if full.exists() {
                 std::fs::remove_file(&full).map_err(AppError::from_io)?;
@@ -770,7 +849,7 @@ pub fn discard_hunk(
     }
 
     let hunk_text = rebuild_patch(file, &[hunk_index], &[]);
-    apply_reverse_patch(repo, path, &hunk_text)?;
+    apply_discard_patch(repo, path, &hunk_text)?;
 
     Ok(OperationResult::ok(format!(
         "Hunk {hunk_index} quitado del area de preparacion en {path}"
@@ -846,14 +925,30 @@ pub fn apply_hunk_selection(repo: &Repository, selections: &[HunkSelection]) -> 
 }
 
 /// Reconstruye un parche unificado con los hunks y lineas seleccionados.
+///
+/// libgit2 (`git_patch_parse`) exige la cabecera `diff --git` para reconocer un
+/// parche; sin ella `Diff::from_buffer` siempre falla. Se emiten tambien las
+/// cabeceras git-extendidas (`new file mode`, `deleted file mode`) para que el
+/// parser sepa recrear/eliminar el archivo.
 fn rebuild_patch(file: &FileDiff, hunk_indices: &[usize], excluded: &[(usize, usize)]) -> String {
     let mut patch = String::new();
 
-    if let Some(old_path) = &file.old_path {
-        patch.push_str(&format!("--- a/{old_path}\n+++ b/{}\n", file.path));
-    } else {
-        patch.push_str(&format!("--- a/{}\n+++ b/{}\n", file.path, file.path));
+    let old_path = file.old_path.as_deref().unwrap_or(&file.path);
+
+    patch.push_str(&format!("diff --git a/{old_path} b/{}\n", file.path));
+
+    if file.is_binary {
+        patch.push_str("GIT binary patch\n");
+        return patch;
     }
+
+    if file.kind == ChangeKind::Added {
+        patch.push_str("new file mode 100644\n");
+    } else if file.kind == ChangeKind::Deleted {
+        patch.push_str("deleted file mode 100644\n");
+    }
+
+    patch.push_str(&format!("--- a/{old_path}\n+++ b/{}\n", file.path));
 
     for &hunk_index in hunk_indices {
         let Some(hunk) = file.hunks.get(hunk_index) else {
@@ -874,20 +969,34 @@ fn rebuild_patch(file: &FileDiff, hunk_indices: &[usize], excluded: &[(usize, us
     patch
 }
 
-/// Aplica un parche al working tree.
+/// Aplica un parche al area de preparacion (indice).
 ///
-/// La ruta moderna de libgit2 es parsear el parche con `Diff::from_buffer` y
-/// aplicar el `Diff` resultante: evita manipular flags crudos a mano.
+/// Un parche del lado worktree (HEAD..worktree) aplicado al indice stagea el
+/// hunk: libgit2 escribe el resultado en el indice sin tocar el working tree.
 fn apply_patch(repo: &Repository, path: &str, patch: &str) -> AppResult<()> {
-    apply_raw_patch(repo, path, patch, false)
+    apply_raw_patch(repo, path, patch, false, git2::ApplyLocation::Index)
 }
 
-/// Revierte un parche (usado para unstaging y discard de hunks).
+/// Reaplica un parche del lado staged de vuelta al working tree (unstage).
+///
+/// La seleccion viene del diff HEAD..index; para des-stagear hay que devolver
+/// ese contenido al working tree => se aplica invertido sobre WorkDir.
 fn apply_reverse_patch(repo: &Repository, path: &str, patch: &str) -> AppResult<()> {
-    apply_raw_patch(repo, path, patch, true)
+    apply_raw_patch(repo, path, patch, true, git2::ApplyLocation::WorkDir)
 }
 
-fn apply_raw_patch(repo: &Repository, path: &str, patch: &str, reverse: bool) -> AppResult<()> {
+/// Descarta un hunk del working tree aplicando su parche invertido a WorkDir.
+fn apply_discard_patch(repo: &Repository, path: &str, patch: &str) -> AppResult<()> {
+    apply_raw_patch(repo, path, patch, true, git2::ApplyLocation::WorkDir)
+}
+
+fn apply_raw_patch(
+    repo: &Repository,
+    path: &str,
+    patch: &str,
+    reverse: bool,
+    location: git2::ApplyLocation,
+) -> AppResult<()> {
     let body = if reverse { reverse_patch_text(patch) } else { patch.to_string() };
 
     let diff = git2::Diff::from_buffer(body.as_bytes()).map_err(|e| {
@@ -903,7 +1012,7 @@ fn apply_raw_patch(repo: &Repository, path: &str, patch: &str, reverse: bool) ->
     let mut opts = git2::ApplyOptions::new();
     opts.check(true);
 
-    repo.apply(&diff, git2::ApplyLocation::WorkDir, Some(&mut opts))
+    repo.apply(&diff, location, Some(&mut opts))
         .map_err(|e| {
             AppError::invalid_state(format!(
                 "No se pudo {} el cambio en {path}: {}",
@@ -949,7 +1058,7 @@ fn repo_workdir(repo: &Repository) -> std::path::PathBuf {
 fn refresh_workdir_file(repo: &Repository, paths: &[String]) -> AppResult<()> {
     let mut index = repo.index().map_err(AppError::from_git)?;
     for path in paths {
-        let workdir_path = repo_workdir(repo).join(native_path(path));
+        let workdir_path = crate::git::util::safe_worktree_path(&repo_workdir(repo), path)?;
         if !workdir_path.exists() {
             continue;
         }

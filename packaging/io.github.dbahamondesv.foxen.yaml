@@ -13,14 +13,14 @@
 #   flatpak install --user flathub org.flatpak.Builder
 #   flatpak install --user flathub org.gnome.Platform//50 org.gnome.Sdk//50
 #   flatpak run --user org.flatpak.Builder --force-clean --user --disable-cache \
-#       --repo flatpak-repo build-dir packaging/com.foxbuntu.foxen.yaml
+#       --repo flatpak-repo build-dir packaging/io.github.dbahamondesv.foxen.yaml
 #   flatpak build-bundle flatpak-repo foxen.flatpak com.foxbuntu.foxen
 #   flatpak install --user ./foxen.flatpak
 #   flatpak run com.foxbuntu.foxen
 #
-# Nota: el id de escritorio se llama `Foxen.desktop` porque es el nombre que genera
-# el empaquetador de Tauri y asi el mismo metainfo AppStream vale para .deb y
-# Flatpak. Para publicar en Flathub habra que renombrarlo a com.foxbuntu.foxen.desktop.
+# Nota: el componente AppStream se llama io.github.dbahamondesv.foxen y el
+# launchable apunta a com.foxbuntu.foxen.desktop (el id de escritorio que usa
+# el empaquetador de Tauri y postprocess-deb.sh).
 #
 # Al enviar a Flathub hay que sustituir la fuente `file` por una `url` remota
 # (release de GitHub) con su `sha256`, porque Flathub construye sin red local.
@@ -75,13 +75,13 @@ modules:
 
       # Para Flathub: subir el .deb a una release y reemplazar lo anterior por
       #   - type: file
-      #     url: https://github.com/foxbuntu/foxen/releases/download/v0.1.0/foxen_0.1.0_amd64.deb
+      #     url: https://github.com/dbahamondesv/foxen/releases/download/v0.1.0/foxen_0.1.0_amd64.deb
       #     sha256: <checksum>
       #     only-arches: [x86_64]
 
       # Metadatos AppStream y .desktop compartidos con el .deb.
       - type: file
-        path: com.foxbuntu.foxen.metainfo.xml
+        path: io.github.dbahamondesv.foxen.metainfo.xml
       - type: file
         path: foxen.desktop
 
@@ -96,8 +96,8 @@ modules:
       - install -Dm755 deb-extract/usr/bin/foxen /app/bin/foxen
 
       # Metadatos AppStream (obligatorios para Flathub)
-      - install -Dm644 com.foxbuntu.foxen.metainfo.xml
-        /app/share/metainfo/com.foxbuntu.foxen.metainfo.xml
+      - install -Dm644 io.github.dbahamondesv.foxen.metainfo.xml
+        /app/share/metainfo/io.github.dbahamondesv.foxen.metainfo.xml
 
       # .desktop compartido con el .deb; Flatpak solo exporta el id de la app.
       - install -Dm644 foxen.desktop

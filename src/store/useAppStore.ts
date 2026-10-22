@@ -55,6 +55,8 @@ interface FoxenState {
   // --- Seleccion ---
   selectedOid: string | null;
   selectedDetail: CommitDetail | null;
+  /** Popup con el detalle del commit (sustituye a la columna derecha). */
+  detailOpen: boolean;
   selectedFile: string | null;
   /** Lado del diff seleccionado: working tree, staged o commit. */
   selectedSide: 'worktree' | 'staged' | 'commit';
@@ -77,6 +79,8 @@ interface FoxenState {
   toasts: Toast[];
   commitMessage: string;
   graphHighlight: string;
+  /** Zoom actual del grafo de commits (persiste entre refrescos del grafo). */
+  graphZoom: number;
   /** Anchos de la tabla de commits, arrastrables desde la cabecera. */
   columnWidths: ColumnWidths;
 
@@ -145,6 +149,9 @@ interface FoxenState {
     side?: 'worktree' | 'staged' | 'commit',
     oldOid?: string | null,
   ) => Promise<void>;
+  /** Abre el detalle del commit, cargandolo si hace falta. */
+  openDetail: (oid: string) => void;
+  closeDetail: () => void;
 
   setPanel: (panel: SidePanel) => void;
   setTheme: (theme: Theme) => void;
@@ -157,6 +164,7 @@ interface FoxenState {
   hydrateTheme: () => Promise<void>;
   setCommitMessage: (message: string) => void;
   setGraphHighlight: (value: string) => void;
+  setGraphZoom: (zoom: number) => void;
   setColumnWidth: (key: ColumnKey, width: number) => void;
 
   notify: (kind: Toast['kind'], text: string) => void;
@@ -177,6 +185,15 @@ let toastSeq = 0;
 
 /** Evita reabrir la sesion mas de una vez (React StrictMode monta dos veces). */
 let sessionRestored = false;
+
+/**
+ * Coalescencia de `refreshAll`: watcher, foco de ventana, F5 y acciones del
+ * usuario solapan refrescos; con una sola invocacion en vuelo (y un repaso
+ * final si llegaron mas peticiones) las tareas dejan de acumularse tras el
+ * candado de git del backend, que era lo que congelaba la app al abrir.
+ */
+let refreshInFlight = false;
+let refreshQueued = false;
 
 /** Registra una ruta como abierta y la marca como activa en la sesion. */
 function rememberOpen(path: string): void {
@@ -208,6 +225,7 @@ export const useStore = create<FoxenState>((set, get) => ({
 
   selectedOid: null,
   selectedDetail: null,
+  detailOpen: false,
   selectedFile: null,
   selectedSide: 'worktree',
   selectedOldOid: null,
@@ -223,6 +241,7 @@ export const useStore = create<FoxenState>((set, get) => ({
   toasts: [],
   commitMessage: '',
   graphHighlight: '',
+  graphZoom: 1,
   columnWidths: loadColumnWidths(),
 
   // --- GitHub ---
@@ -298,6 +317,7 @@ export const useStore = create<FoxenState>((set, get) => ({
         repoId: handle.id,
         selectedOid: null,
         selectedDetail: null,
+        detailOpen: false,
         selectedFile: null,
         diff: null,
       });
@@ -320,6 +340,7 @@ export const useStore = create<FoxenState>((set, get) => ({
         repoId: handle.id,
         selectedOid: null,
         selectedDetail: null,
+        detailOpen: false,
         selectedFile: null,
         diff: null,
         githubReposOpen: false,
@@ -431,6 +452,7 @@ export const useStore = create<FoxenState>((set, get) => ({
       mergeTarget: null,
       selectedOid: null,
       selectedDetail: null,
+      detailOpen: false,
       selectedFile: null,
       diff: null,
     });
@@ -442,20 +464,33 @@ export const useStore = create<FoxenState>((set, get) => ({
   // -------------------------------------------------------------------------
 
   refreshAll: async () => {
-    const { repoId } = get();
-    if (!repoId) return;
+    if (refreshInFlight) {
+      refreshQueued = true;
+      return;
+    }
+    if (!get().repoId) return;
+    refreshInFlight = true;
     set({ loading: true });
     try {
-      // Primero status+grafo: son lo que pinta la pantalla principal.
-      await Promise.all([get().refreshStatus(), get().refreshGraph()]);
-      await Promise.all([
-        get().refreshBranches(),
-        get().refreshStashes(),
-        get().refreshRemotes(),
-        get().refreshFlow(),
-        get().refreshOperationState(),
-      ]);
+      do {
+        refreshQueued = false;
+        const repoId = get().repoId;
+        if (!repoId) break;
+        // Primero status+grafo: son lo que pinta la pantalla principal.
+        await Promise.all([get().refreshStatus(), get().refreshGraph()]);
+        // Si se cambio de repositorio a mitad, este repaso ya no aplica.
+        if (get().repoId !== repoId) continue;
+        await Promise.all([
+          get().refreshBranches(),
+          get().refreshStashes(),
+          get().refreshRemotes(),
+          get().refreshFlow(),
+          get().refreshOperationState(),
+        ]);
+      } while (refreshQueued);
     } finally {
+      refreshInFlight = false;
+      refreshQueued = false;
       set({ loading: false });
     }
   },
@@ -513,7 +548,7 @@ export const useStore = create<FoxenState>((set, get) => ({
       // Mantiene la seleccion si el commit sigue en el grafo.
       const selected = get().selectedOid;
       if (selected && !graph.nodes.some((n) => n.oid === selected)) {
-        set({ selectedOid: null, selectedDetail: null });
+        set({ selectedOid: null, selectedDetail: null, detailOpen: false });
       }
     } catch (error) {
       get().notify('error', errorMessage(error));
@@ -591,22 +626,33 @@ export const useStore = create<FoxenState>((set, get) => ({
 
   selectCommit: async (oid) => {
     const { repoId } = get();
-    set({ selectedOid: oid });
+    // Limpia el detalle anterior para no mostrar un commit equivocado mientras carga.
+    set({ selectedOid: oid, selectedDetail: null });
     if (!repoId || !oid) {
-      set({ selectedDetail: null });
+      set({ detailOpen: false });
       return;
     }
     try {
-      set({ selectedDetail: await ipc.getCommitDetail(repoId, oid) });
+      const detail = await ipc.getCommitDetail(repoId, oid);
+      // Evita que una respuesta lenta pise la seleccion actual.
+      if (get().selectedOid === oid) set({ selectedDetail: detail });
     } catch (error) {
-      set({ selectedDetail: null });
+      if (get().selectedOid === oid) set({ selectedDetail: null, detailOpen: false });
       get().notify('error', errorMessage(error));
     }
   },
 
+  openDetail: (oid) => {
+    set({ detailOpen: true });
+    const { selectedOid, selectedDetail } = get();
+    if (selectedOid !== oid || !selectedDetail) void get().selectCommit(oid);
+  },
+
+  closeDetail: () => set({ detailOpen: false }),
+
   selectFile: async (path, side = 'worktree', oldOid = null) => {
     const { repoId } = get();
-    set({ selectedFile: path, selectedSide: side, selectedOldOid: oldOid });
+    set({ selectedFile: path, selectedSide: side, selectedOldOid: oldOid, diff: null });
     if (!repoId || !path) {
       set({ diff: null });
       return;
@@ -622,9 +668,23 @@ export const useStore = create<FoxenState>((set, get) => ({
         context: 3,
         maxFileBytes: 2_000_000,
       });
-      set({ diff });
+      const current = get();
+      if (
+        current.selectedFile === path &&
+        current.selectedSide === side &&
+        current.selectedOldOid === oldOid
+      ) {
+        set({ diff });
+      }
     } catch (error) {
-      set({ diff: null });
+      const current = get();
+      if (
+        current.selectedFile === path &&
+        current.selectedSide === side &&
+        current.selectedOldOid === oldOid
+      ) {
+        set({ diff: null });
+      }
       get().notify('error', errorMessage(error));
     }
   },
@@ -634,7 +694,8 @@ export const useStore = create<FoxenState>((set, get) => ({
   // -------------------------------------------------------------------------
 
   setPanel: (panel) => {
-    set({ panel });
+    // Cambiar de pestana cierra el diff abierto en la barra lateral.
+    set({ panel, selectedFile: null, diff: null });
     // El reflog se carga bajo demanda porque puede ser largo.
     if (panel === 'reflog') void get().refreshReflog();
   },
@@ -664,10 +725,9 @@ export const useStore = create<FoxenState>((set, get) => ({
 
   setCommitMessage: (commitMessage) => set({ commitMessage }),
 
-  setGraphHighlight: (graphHighlight) => {
-    set({ graphHighlight });
-    void get().refreshGraph();
-  },
+  setGraphHighlight: (graphHighlight) => set({ graphHighlight }),
+
+  setGraphZoom: (graphZoom) => set({ graphZoom }),
 
   setColumnWidth: (key, width) => {
     const columnWidths = { ...get().columnWidths };

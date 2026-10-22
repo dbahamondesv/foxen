@@ -39,7 +39,7 @@ const FLUSH_BYTES: usize = 16 * 1024;
 const READ_BUF: usize = 8 * 1024;
 
 struct Session {
-    writer: Box<dyn Write + Send>,
+    writer: Arc<Mutex<Box<dyn Write + Send>>>,
     master: Box<dyn portable_pty::MasterPty>,
     child: Box<dyn portable_pty::Child + Send + Sync>,
 }
@@ -53,9 +53,10 @@ struct Sessions {
 
 impl Drop for Sessions {
     fn drop(&mut self) {
-        // Al cerrar la app los shells no deben quedar huerfanos.
+        // Al cerrar la app los shells no deben quedar huerfanos ni como zombies.
         for (_, mut session) in self.inner.lock().drain() {
             let _ = session.child.kill();
+            let _ = session.child.wait();
         }
     }
 }
@@ -131,7 +132,7 @@ impl PtyState {
         self.sessions.inner.lock().insert(
             repo_id.to_string(),
             Session {
-                writer,
+                writer: Arc::new(Mutex::new(writer)),
                 master: pair.master,
                 child,
             },
@@ -150,14 +151,21 @@ impl PtyState {
                     .with_detail(e.to_string())
             })?;
 
-        let mut sessions = self.sessions.inner.lock();
-        let session = sessions
-            .get_mut(repo_id)
+        // Se clona el `Arc` del writer y se suelta el candado del mapa antes de
+        // escribir: `write_all` puede bloquearse con el buffer de la PTY lleno y
+        // no debe arrastrar a `stop`/`resize`/`start` de todos los repositorios.
+        let writer = self
+            .sessions
+            .inner
+            .lock()
+            .get(repo_id)
+            .map(|session| Arc::clone(&session.writer))
             .ok_or_else(|| AppError::new(ErrorKind::NotFound, "La terminal no esta abierta"))?;
-        session
-            .writer
+
+        let mut writer = writer.lock();
+        writer
             .write_all(&bytes)
-            .and_then(|_| session.writer.flush())
+            .and_then(|_| writer.flush())
             .map_err(|e| pty_error("No se pudo escribir en la terminal", e))
     }
 
@@ -182,6 +190,8 @@ impl PtyState {
     pub fn stop(&self, repo_id: &str) {
         if let Some(mut session) = self.sessions.inner.lock().remove(repo_id) {
             let _ = session.child.kill();
+            // `wait` evita que el hijo quede como proceso zombie.
+            let _ = session.child.wait();
             // Soltar `master`/`writer` cierra la PTY por si el hijo no murio.
             drop(session);
         }

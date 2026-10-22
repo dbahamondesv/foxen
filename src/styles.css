@@ -41,13 +41,14 @@
   --neon-blue: #60a5fa;
 
   --mono: 'JetBrains Mono', 'Fira Code', ui-monospace, 'Cascadia Code', Menlo, monospace;
-  --sans: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial,
-    sans-serif;
+  --sans:
+    -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
 }
 
 /* Tema claro: se mantiene soportado pero con los mismos acentos neón
  * atenuados para conservar la identidad de la interfaz. */
 :root {
+  color-scheme: light;
   --bg: #ffffff;
   --bg-elev: #f7f8fa;
   --bg-elev-2: #edf0f4;
@@ -63,22 +64,35 @@
   --warning: #d97706;
   --purple: #9333ea;
 
-  /* Colores de carril del grafo (paleta armonizada) */
+  /* Colores de carril del grafo: cada carril = una rama (profundidad + tono).
+   * Mismo arco cool que el tema oscuro, en variantes con contraste sobre
+   * blanco para no perder legibilidad en tema claro. */
   --lane-0: #db2777;
   --lane-1: #9333ea;
   --lane-2: #2563eb;
-  --lane-3: #d97706;
-  --lane-4: #059669;
-  --lane-5: #e11d48;
+  --lane-3: #0d9488;
+  --lane-4: #e11d48;
+  --lane-5: #c026d3;
   --lane-6: #7c3aed;
-  --lane-7: #ea580c;
-  --lane-8: #0d9488;
-  --lane-9: #0284c7;
+  --lane-7: #0284c7;
+  --lane-8: #0891b2;
+  --lane-9: #4f46e5;
+
+  /* Tonos por TIPO de commit (nodos del grafo y badges de fila).
+   * Deben coincidir con KIND_HUE en src/lib/format.ts. */
+  --kind-feature: hsl(265 74% 46%);
+  --kind-fix: hsl(335 74% 46%);
+  --kind-docs: hsl(205 74% 46%);
+  --kind-refactor: hsl(285 74% 46%);
+  --kind-test: hsl(190 74% 46%);
+  --kind-perf: hsl(320 74% 46%);
+  --kind-chore: hsl(220 74% 46%);
 }
 
 /* Tema oscuro profesional: base azul-grafito muy profunda, alto contraste
  * controlado y acentos neón suaves. Es el tema de referencia del rediseño. */
 [data-theme='dark'] {
+  color-scheme: dark;
   --bg: #0f1015;
   --bg-elev: #16171d;
   --bg-elev-2: #1d1e27;
@@ -95,17 +109,27 @@
   --warning: #fbbf24;
   --purple: #c084fc;
 
-  /* Carriles en tonos neón suaves (magenta → púrpura → azul) sobre fondo oscuro */
+  /* Carriles en el arco cool (magenta → púrpura → azul → cian): cada carril
+   * es una rama del grafo. Sin cálidos ni verdes para no romper la paleta. */
   --lane-0: #f472b6;
   --lane-1: #c084fc;
   --lane-2: #60a5fa;
-  --lane-3: #fbbf24;
-  --lane-4: #34d399;
-  --lane-5: #fb7185;
+  --lane-3: #2dd4bf;
+  --lane-4: #fb7185;
+  --lane-5: #e879f9;
   --lane-6: #a78bfa;
-  --lane-7: #fb923c;
-  --lane-8: #2dd4bf;
-  --lane-9: #38bdf8;
+  --lane-7: #38bdf8;
+  --lane-8: #22d3ee;
+  --lane-9: #818cf8;
+
+  /* Tonos por TIPO de commit (nodos del grafo y badges de fila). */
+  --kind-feature: hsl(265 74% 66%);
+  --kind-fix: hsl(335 74% 66%);
+  --kind-docs: hsl(205 74% 66%);
+  --kind-refactor: hsl(285 74% 66%);
+  --kind-test: hsl(190 74% 66%);
+  --kind-perf: hsl(320 74% 66%);
+  --kind-chore: hsl(220 74% 66%);
 }
 
 * {
@@ -123,8 +147,16 @@ body {
   background: var(--bg);
   /* Halo neón tenue en las esquinas para dar profundidad sin distraer. */
   background-image:
-    radial-gradient(1200px 600px at 12% -10%, color-mix(in srgb, var(--neon-purple) 9%, transparent), transparent 60%),
-    radial-gradient(1000px 520px at 100% 0%, color-mix(in srgb, var(--neon-blue) 7%, transparent), transparent 55%);
+    radial-gradient(
+      1200px 600px at 12% -10%,
+      color-mix(in srgb, var(--neon-purple) 9%, transparent),
+      transparent 60%
+    ),
+    radial-gradient(
+      1000px 520px at 100% 0%,
+      color-mix(in srgb, var(--neon-blue) 7%, transparent),
+      transparent 55%
+    );
   background-attachment: fixed;
   color: var(--text);
   font-family: var(--sans);
@@ -362,38 +394,39 @@ pre,
 
 .layout {
   display: grid;
-  grid-template-columns: 320px 1fr 340px;
+  /* 56px de pestanas verticales + 320px de contenido del panel. */
+  grid-template-columns: 376px 1fr;
   flex: 1 1 auto;
   min-height: 0;
 }
 
-.sidebar,
-.inspector {
-  background: color-mix(in srgb, var(--bg-elev) 90%, transparent);
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-}
-
 .sidebar {
+  background: color-mix(in srgb, var(--bg-elev) 90%, transparent);
+  overflow: hidden;
+  display: flex;
+  flex-direction: row;
   border-right: 1px solid var(--border);
   box-shadow: inset -1px 0 0 var(--border-soft);
 }
 
-.inspector {
-  border-left: 1px solid var(--border);
-  box-shadow: inset 1px 0 0 var(--border-soft);
+/* El raíl de pestanas queda fijo; solo se desplaza el contenido. */
+.sidebar-content {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
 }
 
 /* El panel lateral se puede ocultar desde la barra superior. Al desaparecer
-   deja de ser un item de la rejilla, asi que hay que quitarle su columna:
-   con `340px 1fr 340px` el grafo caeria en la primera. */
+   deja de ser un item de la rejilla, asi que hay que quitarle su columna. */
 .sidebar.is-hidden {
   display: none;
 }
 
 .layout.sidebar-hidden {
-  grid-template-columns: 1fr 340px;
+  grid-template-columns: 1fr;
 }
 
 .main {
@@ -428,22 +461,30 @@ pre,
 }
 
 @keyframes slide {
-  0% { transform: translateX(-100%); }
-  100% { transform: translateX(100%); }
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
 }
 
 /* ---------------------------------------------------------- Panel tabs */
 
+/* Pestanas verticales (raíl) a la izquierda del panel. */
 .panel-tabs {
+  flex: 0 0 56px;
   display: flex;
-  align-items: center;
-  gap: 3px;
-  padding: var(--sp-2) var(--sp-2);
-  border-bottom: 1px solid var(--border);
-  background: transparent;
-  flex: 0 0 auto;
-  overflow-x: auto;
+  flex-direction: column;
+  gap: 7px;
+  padding: var(--sp-2) 6px;
+  border-right: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg-elev-2) 55%, var(--bg-elev));
+  overflow-y: auto;
+  overflow-x: hidden;
   scrollbar-width: none;
+  min-height: 0;
+  overscroll-behavior: contain;
 }
 
 .panel-tabs::-webkit-scrollbar {
@@ -451,15 +492,21 @@ pre,
 }
 
 .panel-tab {
+  position: relative;
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 6px;
+  justify-content: center;
+  gap: 2px;
+  width: 100%;
+  padding: 6px 2px;
   background: transparent;
   border: 1px solid transparent;
-  border-radius: var(--radius-sm);
-  padding: 5px 9px;
-  font-size: 12px;
-  font-weight: 450;
+  border-radius: 7px;
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1;
   color: var(--text-dim);
   cursor: pointer;
   white-space: nowrap;
@@ -475,37 +522,44 @@ pre,
 }
 
 .panel-tab.is-active {
-  background: color-mix(in srgb, var(--neon-purple) 15%, var(--bg-elev-2));
-  border-color: color-mix(in srgb, var(--neon-purple) 38%, transparent);
-  color: var(--neon-purple);
+  background: color-mix(in srgb, var(--accent) 13%, var(--bg-elev-2));
+  border-color: color-mix(in srgb, var(--accent) 32%, transparent);
+  color: var(--accent);
   font-weight: 600;
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--neon-purple) 12%, transparent),
-    0 4px 16px color-mix(in srgb, var(--neon-purple) 18%, transparent);
+  box-shadow: inset 2px 0 0 var(--accent);
 }
 
 .tab-icon {
-  font-size: 13px;
+  font-size: 16px;
   line-height: 1;
   opacity: 0.85;
 }
 
-/* Contador discreto: número sin ruido, alineado a la derecha del tab. */
+.tab-label {
+  font-size: 10px;
+  letter-spacing: 0;
+}
+
+/* Contador discreto en la esquina del icono. */
 .tab-badge {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  min-width: 14px;
+  padding: 0 3px;
   background: color-mix(in srgb, var(--text) 6%, transparent);
   border: 1px solid var(--border-soft);
   color: var(--text-faint);
   border-radius: var(--radius-pill);
-  padding: 0 6px;
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
-  min-width: 16px;
+  line-height: 12px;
   text-align: center;
-  line-height: 15px;
 }
 
 .panel-tab.is-active .tab-badge {
-  background: var(--neon-purple);
+  background: var(--accent);
   border-color: transparent;
   color: #0b0c10;
 }
@@ -513,6 +567,9 @@ pre,
 /* --------------------------------------------------------------- Graph */
 
 .graph-view {
+  /* Ancho de la meta (fecha/SHA + boton de detalle) y de la franja del
+   * grafo. La fecha y el SHA comparten el mismo hueco. */
+  --meta-w: 150px;
   display: flex;
   flex-direction: column;
   align-items: stretch;
@@ -522,47 +579,182 @@ pre,
 }
 
 .graph-body {
-  display: flex;
-  align-items: flex-start;
+  position: relative;
   min-width: 0;
 }
 
-.graph-svg {
-  flex: 0 0 auto;
-  position: sticky;
-  left: 0;
-  z-index: 2;
+/* El grafo es una franja a la derecha del asunto y antes de la fecha (como en
+ * GitFiend). Al ser absoluta no empuja el texto: las filas reservan su hueco
+ * con `.graph-spacer`. Su tamano lo actualiza el componente en vivo. */
+.graph-canvas-wrap {
+  position: absolute;
+  top: 0;
+  right: var(--meta-w);
+  z-index: 3;
+  width: var(--graph-w, 40px);
+  height: var(--graph-h, 400px);
   background: var(--bg);
+  cursor: pointer;
+}
+
+.graph-canvas {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  image-rendering: -webkit-optimize-contrast;
+  pointer-events: none;
+}
+
+.graph-view {
+  overflow: visible;
+}
+
+.graph-tooltip {
+  position: fixed;
+  z-index: 80;
+  max-width: 340px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--bg-elev-2) 96%, transparent);
+  border: 1px solid var(--border);
+  box-shadow:
+    var(--elev-2),
+    0 0 0 1px color-mix(in srgb, var(--neon-purple) 12%, transparent);
+  pointer-events: none;
+  backdrop-filter: blur(10px);
+  /* Retardo corto: no parpadea al recorrer filas con el cursor. */
+  animation: fade-in var(--dur) var(--ease) 70ms both;
+}
+
+.tooltip-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 6px;
+}
+
+.tooltip-avatar {
+  flex: 0 0 18px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  color: #fff;
+  text-shadow: 0 1px 2px rgb(0 0 0 / 35%);
+}
+
+.tooltip-author {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.tooltip-date {
+  margin-left: auto;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-faint);
+}
+
+.tooltip-message {
+  margin: 0 0 7px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-dim);
+  overflow-wrap: anywhere;
+}
+
+.tooltip-foot {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.tooltip-sha {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-faint);
+}
+
+.tooltip-ref {
+  font-size: 10px;
+  padding: 1px 7px;
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--neon-purple) 14%, transparent);
+  color: var(--neon-purple);
+  border: 1px solid color-mix(in srgb, var(--neon-purple) 30%, transparent);
 }
 
 .graph-rows {
-  flex: 1 1 auto;
-  min-width: 0;
   display: flex;
   flex-direction: column;
+  width: 100%;
+  height: var(--graph-h, 400px);
 }
 
 .graph-row {
+  position: relative;
+  z-index: 0;
+  isolation: isolate;
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 0 16px 0 10px;
+  height: var(--row-h, 38px);
+  padding: 0 14px 0 12px;
+  overflow: hidden;
   cursor: pointer;
-  border-bottom: 1px solid var(--border-soft);
   font-size: 13px;
+  font-weight: 400;
   white-space: nowrap;
-  transition: background-color var(--dur) var(--ease);
+  transition: opacity var(--dur-slow) var(--ease);
   user-select: none;
 }
 
-.graph-row:hover,
-.graph-row.is-hover {
-  background: color-mix(in srgb, var(--neon-purple) 6%, var(--bg-elev));
+/* Fondo de fila recortado justo antes del grafo: el color no invade la
+ * franja del grafo ni la columna de fecha/SHA. */
+.graph-row::before {
+  content: '';
+  position: absolute;
+  inset: 0 calc(var(--meta-w) + var(--graph-w, 40px)) 0 0;
+  z-index: -1;
+  background: transparent;
+  transition: background-color var(--dur) var(--ease);
+  pointer-events: none;
 }
 
-.graph-row.is-selected {
-  background: color-mix(in srgb, var(--neon-purple) 16%, var(--bg));
-  box-shadow: inset 3px 0 0 var(--accent);
+/* Separador que se detiene antes del grafo: la columna queda flotando. */
+.graph-row::after {
+  content: '';
+  position: absolute;
+  left: 12px;
+  right: calc(var(--meta-w) + var(--graph-w, 40px));
+  bottom: 0;
+  height: 1px;
+  background: var(--border-soft);
+  pointer-events: none;
+}
+
+.graph-row:hover::before,
+.graph-row.is-hover::before {
+  background: color-mix(in srgb, var(--neon-purple) 7%, var(--bg-elev));
+}
+
+.graph-row.is-highlight::before {
+  background: color-mix(in srgb, var(--warning) 16%, var(--bg));
+}
+
+/* La seleccion gana al resaltado de busqueda. La barra de acento va en el
+ * propio fondo (un box-shadow inset quedaria debajo del pseudo). */
+.graph-row.is-selected::before {
+  background: color-mix(in srgb, var(--neon-purple) 18%, var(--bg));
+  border-left: 3px solid var(--accent);
 }
 
 .graph-row.is-head .graph-subject {
@@ -570,61 +762,66 @@ pre,
   color: var(--text);
 }
 
-.graph-row.is-highlight {
-  background: color-mix(in srgb, var(--warning) 16%, var(--bg));
+/* Filtro de rama: las filas ajenas al carril se atenuan (no desaparecen,
+ * para conservar la geometria del grafo y poder volver atras). */
+.graph-row.is-dim {
+  opacity: 0.34;
 }
 
-/* Bandas dentro del SVG para continuidad visual con las filas */
-.graph-band {
-  fill: transparent;
-  transition: fill 0.12s ease;
+.graph-row.is-dim:hover,
+.graph-row.is-dim.is-hover {
+  opacity: 0.85;
 }
 
-.graph-band.is-hover {
-  fill: color-mix(in srgb, var(--neon-purple) 6%, var(--bg-elev));
+/* Foco visible por teclado en las filas (nunca outline sin reemplazo). */
+.graph-row:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--neon-purple) 70%, transparent);
+  outline-offset: -2px;
 }
 
-.graph-band.is-selected {
-  fill: color-mix(in srgb, var(--neon-purple) 16%, var(--bg));
+/* Paneo: espacio + arrastre o boton central sobre el scroller real. */
+.graph-view.is-pan-ready {
+  cursor: grab;
 }
 
-.graph-sep {
-  stroke: var(--border-soft);
-  stroke-width: 1;
-}
-
-.graph-split {
-  stroke: var(--border);
-  stroke-width: 1;
-}
-
-.graph-mark {
-  fill: var(--accent);
-}
-
-/* Avatar del autor con inicial estilo GitFiend */
-.graph-avatar {
-  flex: 0 0 20px;
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 11px;
-  font-weight: 700;
-  color: #ffffff;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+.graph-view.is-panning {
+  cursor: grabbing;
   user-select: none;
 }
 
-/* Contenedor de pastillas de ramas y tags */
+.graph-view.is-panning .graph-row,
+.graph-view.is-panning .graph-canvas-wrap {
+  cursor: grabbing;
+}
+
+.graph-view.is-pan-ready .graph-canvas-wrap {
+  cursor: grab;
+}
+
+/* Entrada escalonada del timeline (solo sin preferencia de menos motion). */
+@media (prefers-reduced-motion: no-preference) {
+  .graph-rows.is-entrance .graph-row {
+    animation: graph-row-in 320ms var(--ease) both;
+    animation-delay: calc(min(var(--row-i, 0), 90) * 4ms);
+  }
+}
+
+@keyframes graph-row-in {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+}
+
+/* Contenedor de pastillas de ramas y tags (se recorta antes de empujar la fila) */
 .graph-labels-wrap {
   display: flex;
   align-items: center;
   gap: 6px;
-  flex: 0 0 auto;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 42%;
+  overflow: hidden;
 }
 
 /* Pastillas de ramas/tags: color por categoría con contraste controlado. */
@@ -632,14 +829,35 @@ pre,
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  padding: 2px 9px;
+  padding: 2px 8px;
   border-radius: var(--radius-pill);
   font-size: 11px;
   font-weight: 500;
   letter-spacing: 0.01em;
   white-space: nowrap;
   line-height: 1.35;
-  transition: all var(--dur) var(--ease);
+  font-family: inherit;
+  max-width: 170px;
+  cursor: pointer;
+  transition:
+    background var(--dur) var(--ease),
+    border-color var(--dur) var(--ease);
+}
+
+.ref-pill:hover {
+  filter: brightness(1.15);
+}
+
+.ref-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Rama/tag activa por el filtro de clic. */
+.ref-pill.is-filter {
+  box-shadow: 0 0 0 2px color-mix(in srgb, currentColor 45%, transparent);
+  filter: brightness(1.2);
 }
 
 /* Rama local activa (HEAD) */
@@ -653,18 +871,19 @@ pre,
   font-weight: 800;
 }
 
-/* Otras ramas locales */
+/* Otras ramas locales: toman el color del carril al que pertenecen, de modo
+ * que la pastilla y su linea del grafo se reconocen de un vistazo. */
 .ref-pill.ref-branch:not(.is-head) {
-  background: color-mix(in srgb, var(--neon-blue) 13%, transparent);
-  border: 1px solid color-mix(in srgb, var(--neon-blue) 36%, transparent);
-  color: var(--neon-blue);
+  color: var(--ref-color, var(--neon-blue));
+  background: color-mix(in srgb, var(--ref-color, var(--neon-blue)) 13%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ref-color, var(--neon-blue)) 36%, transparent);
 }
 
-/* Ramas remotas */
+/* Ramas remotas: mismo carril, algo mas discretas */
 .ref-pill.ref-remoteBranch {
-  background: color-mix(in srgb, var(--neon-purple) 13%, transparent);
-  border: 1px solid color-mix(in srgb, var(--neon-purple) 36%, transparent);
-  color: var(--neon-purple);
+  color: var(--ref-color, var(--neon-purple));
+  background: color-mix(in srgb, var(--ref-color, var(--neon-purple)) 9%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ref-color, var(--neon-purple)) 26%, transparent);
 }
 
 /* Tags con borde punteado */
@@ -690,50 +909,63 @@ pre,
   font-variant-numeric: tabular-nums;
 }
 
-/* Badge tipografico del tipo de commit (F, D, chore…) */
+/* Badge circular del tipo de commit (F, X, D, C…) */
 .commit-badge {
-  flex: 0 0 auto;
+  flex: 0 0 20px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 20px;
-  height: 18px;
-  padding: 0 6px;
-  border-radius: var(--radius-xs);
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border-radius: 50%;
   font-family: var(--mono);
   font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.03em;
+  font-weight: 700;
+  letter-spacing: 0;
   line-height: 1;
   border: 1px solid transparent;
   font-variant-numeric: tabular-nums;
 }
 
+/* Badges por tipo: mismo tono que el nodo del grafo (KIND_HUE / --kind-*). */
 .commit-badge.kind-feature {
-  color: var(--neon-blue);
-  background: color-mix(in srgb, var(--neon-blue) 14%, transparent);
-  border-color: color-mix(in srgb, var(--neon-blue) 30%, transparent);
+  color: var(--kind-feature);
+  background: color-mix(in srgb, var(--kind-feature) 18%, transparent);
+  border-color: color-mix(in srgb, var(--kind-feature) 40%, transparent);
 }
 .commit-badge.kind-fix {
-  color: var(--neon-magenta);
-  background: color-mix(in srgb, var(--neon-magenta) 14%, transparent);
-  border-color: color-mix(in srgb, var(--neon-magenta) 30%, transparent);
+  color: var(--kind-fix);
+  background: color-mix(in srgb, var(--kind-fix) 18%, transparent);
+  border-color: color-mix(in srgb, var(--kind-fix) 40%, transparent);
 }
 .commit-badge.kind-docs {
-  color: var(--neon-purple);
-  background: color-mix(in srgb, var(--neon-purple) 14%, transparent);
-  border-color: color-mix(in srgb, var(--neon-purple) 30%, transparent);
+  color: var(--kind-docs);
+  background: color-mix(in srgb, var(--kind-docs) 18%, transparent);
+  border-color: color-mix(in srgb, var(--kind-docs) 40%, transparent);
 }
-.commit-badge.kind-chore,
-.commit-badge.kind-refactor,
-.commit-badge.kind-test,
+.commit-badge.kind-refactor {
+  color: var(--kind-refactor);
+  background: color-mix(in srgb, var(--kind-refactor) 18%, transparent);
+  border-color: color-mix(in srgb, var(--kind-refactor) 40%, transparent);
+}
+.commit-badge.kind-test {
+  color: var(--kind-test);
+  background: color-mix(in srgb, var(--kind-test) 18%, transparent);
+  border-color: color-mix(in srgb, var(--kind-test) 40%, transparent);
+}
 .commit-badge.kind-perf {
-  color: var(--text-faint);
-  background: color-mix(in srgb, var(--text) 7%, transparent);
-  border-color: var(--border);
+  color: var(--kind-perf);
+  background: color-mix(in srgb, var(--kind-perf) 18%, transparent);
+  border-color: color-mix(in srgb, var(--kind-perf) 40%, transparent);
+}
+.commit-badge.kind-chore {
+  color: var(--kind-chore);
+  background: color-mix(in srgb, var(--kind-chore) 18%, transparent);
+  border-color: color-mix(in srgb, var(--kind-chore) 40%, transparent);
 }
 
-/* Asunto del commit */
+/* Asunto del commit: tipografia delgada y de alto contraste */
 .graph-subject {
   flex: 1 1 auto;
   min-width: 0;
@@ -741,29 +973,81 @@ pre,
   text-overflow: ellipsis;
   color: var(--text);
   font-size: 13px;
-  letter-spacing: -0.01em;
+  font-weight: 400;
+  letter-spacing: -0.014em;
 }
 
-/* Tiempo relativo */
+/* Hueco reservado para la franja del grafo (canvas absoluto encima). */
+.graph-spacer {
+  flex: 0 0 var(--graph-w, 40px);
+  width: var(--graph-w, 40px);
+  align-self: stretch;
+}
+
+/* Meta de la fila: la fecha y el SHA comparten el mismo hueco. Al pasar el
+ * cursor (o con foco) el SHA sustituye a la fecha, sin ocupar mas ancho. */
+.graph-meta {
+  position: relative;
+  flex: 0 0 92px;
+  width: 92px;
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+
 .graph-time {
-  flex: 0 0 auto;
+  flex: 0 0 92px;
+  width: 92px;
+  text-align: right;
   color: var(--text-faint);
   font-size: 12px;
-  padding-left: 8px;
+  font-weight: 300;
+  font-variant-numeric: tabular-nums;
 }
 
-/* Short SHA */
 .graph-shortsha {
-  flex: 0 0 auto;
+  flex: 0 0 64px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 64px;
   font-family: var(--mono);
   font-size: 11px;
+  font-weight: 300;
+  font-variant-numeric: tabular-nums;
   color: var(--text-faint);
   background: var(--bg-elev-2);
   border: 1px solid var(--border-soft);
-  padding: 2px 6px;
+  padding: 2px 4px;
   border-radius: 4px;
   cursor: pointer;
-  transition: all 0.12s ease;
+  visibility: hidden;
+  transition:
+    color var(--dur-fast) var(--ease),
+    border-color var(--dur-fast) var(--ease),
+    background-color var(--dur-fast) var(--ease);
+}
+
+/* En la fila, el SHA se superpone a la fecha (mismo carril de 92 px). */
+.graph-meta .graph-shortsha {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.graph-row:hover .graph-shortsha,
+.graph-row.is-hover .graph-shortsha,
+.graph-row:focus-visible .graph-shortsha {
+  visibility: visible;
+}
+
+.graph-row:hover .graph-time,
+.graph-row.is-hover .graph-time,
+.graph-row:focus-visible .graph-time {
+  visibility: hidden;
 }
 
 .graph-shortsha:hover {
@@ -772,10 +1056,97 @@ pre,
   background: color-mix(in srgb, var(--accent) 15%, var(--bg-elev-2));
 }
 
+/* Boton por commit que abre el detalle en un popup. */
+.graph-detail-btn {
+  flex: 0 0 24px;
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-dim);
+  font-family: inherit;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0.75;
+  transition:
+    opacity var(--dur-fast) var(--ease),
+    background-color var(--dur-fast) var(--ease),
+    border-color var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease);
+}
+
+.graph-row:hover .graph-detail-btn,
+.graph-row.is-hover .graph-detail-btn,
+.graph-row.is-selected .graph-detail-btn,
+.graph-row:focus-within .graph-detail-btn {
+  opacity: 1;
+}
+
+.graph-detail-btn:hover {
+  color: var(--text);
+  background: color-mix(in srgb, var(--neon-purple) 12%, transparent);
+  border-color: color-mix(in srgb, var(--neon-purple) 26%, transparent);
+}
+
+.graph-detail-btn:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--neon-purple) 65%, transparent);
+  outline-offset: 1px;
+}
+
 .graph-truncated {
   padding: 8px 14px;
   color: var(--text-faint);
   font-size: 12px;
+}
+
+/* El SHA del detalle de commit siempre es visible (no vive en una fila). */
+.commit-detail .graph-shortsha {
+  visibility: visible;
+}
+
+/* Popup de detalle del commit: mas ancho que un dialogo normal para que la
+ * lista de archivos y el diff respiren. */
+.modal.detail-modal {
+  width: min(760px, 100%);
+  max-height: min(88vh, 100%);
+}
+
+.detail-modal-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.detail-back {
+  flex: 0 0 auto;
+  padding: 3px 10px;
+  font-size: 11px;
+  white-space: nowrap;
+  color: var(--text-dim);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.detail-back:hover {
+  color: var(--text);
+  background: var(--bg-elev-2);
+}
+
+.detail-modal-body {
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.detail-modal .commit-detail {
+  padding: 16px;
 }
 
 /* Compatibilidad con chips tradicionales si se usan en otros paneles */
@@ -790,10 +1161,23 @@ pre,
   white-space: nowrap;
 }
 
-.ref-branch { border-color: var(--accent); color: var(--accent); }
-.ref-remoteBranch { border-color: var(--neon-purple); color: var(--neon-purple); }
-.ref-tag { border-color: var(--warning); color: var(--warning); }
-.ref-head { background: var(--accent-dim); color: #0b0c10; border-color: var(--accent); }
+.ref-branch {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.ref-remoteBranch {
+  border-color: var(--neon-purple);
+  color: var(--neon-purple);
+}
+.ref-tag {
+  border-color: var(--warning);
+  color: var(--warning);
+}
+.ref-head {
+  background: var(--accent-dim);
+  color: #0b0c10;
+  border-color: var(--accent);
+}
 
 /* --------------------------------------------------------- Changes */
 
@@ -831,7 +1215,9 @@ pre,
   border-radius: var(--radius-sm);
   border: 1px solid transparent;
   cursor: pointer;
-  transition: all 0.12s ease;
+  transition:
+    background-color var(--dur-fast) var(--ease),
+    border-color var(--dur-fast) var(--ease);
 }
 
 .file-row:hover {
@@ -888,12 +1274,30 @@ pre,
   transform: scale(1.08);
 }
 
-.status-cell.added { color: var(--added); background: rgba(52, 211, 153, 0.15); }
-.status-cell.deleted { color: var(--deleted); background: rgba(248, 113, 113, 0.15); }
-.status-cell.modified { color: var(--warning); background: rgba(251, 191, 36, 0.15); }
-.status-cell.renamed { color: var(--purple); background: rgba(192, 132, 252, 0.15); }
-.status-cell.conflicted { color: #fff; background: var(--deleted); }
-.status-cell.untracked { color: var(--text-dim); background: var(--bg-elev-2); }
+.status-cell.added {
+  color: var(--added);
+  background: rgba(52, 211, 153, 0.15);
+}
+.status-cell.deleted {
+  color: var(--deleted);
+  background: rgba(248, 113, 113, 0.15);
+}
+.status-cell.modified {
+  color: var(--warning);
+  background: rgba(251, 191, 36, 0.15);
+}
+.status-cell.renamed {
+  color: var(--purple);
+  background: rgba(192, 132, 252, 0.15);
+}
+.status-cell.conflicted {
+  color: #fff;
+  background: var(--deleted);
+}
+.status-cell.untracked {
+  color: var(--text-dim);
+  background: var(--bg-elev-2);
+}
 
 .commit-box {
   display: flex;
@@ -959,9 +1363,20 @@ pre,
   background: color-mix(in srgb, var(--text) 7%, transparent);
 }
 
-.diff-line.ins { background: color-mix(in srgb, var(--added) 14%, transparent); }
-.diff-line.del { background: color-mix(in srgb, var(--deleted) 14%, transparent); }
-.diff-line.is-excluded { opacity: 0.32; text-decoration: line-through; }
+.diff-line.is-readonly {
+  cursor: default;
+}
+
+.diff-line.ins {
+  background: color-mix(in srgb, var(--added) 14%, transparent);
+}
+.diff-line.del {
+  background: color-mix(in srgb, var(--deleted) 14%, transparent);
+}
+.diff-line.is-excluded {
+  opacity: 0.32;
+  text-decoration: line-through;
+}
 
 .diff-line .ln {
   flex: 0 0 38px;
@@ -983,8 +1398,12 @@ pre,
   overflow-x: auto;
 }
 
-.diff-line.ins .origin { color: var(--added); }
-.diff-line.del .origin { color: var(--deleted); }
+.diff-line.ins .origin {
+  color: var(--added);
+}
+.diff-line.del .origin {
+  color: var(--deleted);
+}
 
 /* --------------------------------------------------------- Branches */
 
@@ -1352,7 +1771,9 @@ h3 {
   border-radius: var(--radius-sm);
   cursor: pointer;
   text-align: left;
-  transition: all 0.12s ease;
+  transition:
+    background-color var(--dur-fast) var(--ease),
+    border-color var(--dur-fast) var(--ease);
 }
 
 .detail-file:hover {
@@ -1598,8 +2019,12 @@ input[type='checkbox'] {
   accent-color: var(--accent-dim);
 }
 
-.ins { color: var(--added); }
-.del { color: var(--deleted); }
+.ins {
+  color: var(--added);
+}
+.del {
+  color: var(--deleted);
+}
 
 .badge {
   background: color-mix(in srgb, var(--text) 8%, transparent);
@@ -1612,10 +2037,26 @@ input[type='checkbox'] {
   border: 1px solid var(--border-soft);
 }
 
-.badge-ahead { background: color-mix(in srgb, var(--added) 18%, transparent); color: var(--added); border-color: transparent; }
-.badge-behind { background: color-mix(in srgb, var(--neon-magenta) 18%, transparent); color: var(--neon-magenta); border-color: transparent; }
-.badge-warn { background: color-mix(in srgb, var(--warning) 18%, transparent); color: var(--warning); border-color: transparent; }
-.badge-conflict { background: var(--deleted); color: #0b0c10; border-color: transparent; }
+.badge-ahead {
+  background: color-mix(in srgb, var(--added) 18%, transparent);
+  color: var(--added);
+  border-color: transparent;
+}
+.badge-behind {
+  background: color-mix(in srgb, var(--neon-magenta) 18%, transparent);
+  color: var(--neon-magenta);
+  border-color: transparent;
+}
+.badge-warn {
+  background: color-mix(in srgb, var(--warning) 18%, transparent);
+  color: var(--warning);
+  border-color: transparent;
+}
+.badge-conflict {
+  background: var(--deleted);
+  color: #0b0c10;
+  border-color: transparent;
+}
 
 .empty {
   color: var(--text-faint);
@@ -1747,6 +2188,11 @@ input[type='checkbox'] {
 
 .modal:focus {
   outline: none;
+}
+
+.modal:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--neon-purple) 65%, transparent);
+  outline-offset: 2px;
 }
 
 .modal-header {
@@ -2372,6 +2818,21 @@ input[type='checkbox'] {
   .activity-flow,
   .modal,
   .toast {
+    animation: none;
+  }
+
+  /* Grafo: sin entrada escalonada ni transiciones de flujo. El canvas ya
+   * desactiva su bucle de animacion; aqui solo quedan las filas del DOM. */
+  .graph-rows.is-entrance .graph-row {
+    animation: none;
+  }
+
+  .graph-row,
+  .graph-row::before,
+  .graph-row::after,
+  .graph-tooltip,
+  .graph-shortsha {
+    transition: none;
     animation: none;
   }
 }

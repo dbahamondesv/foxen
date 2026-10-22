@@ -11,6 +11,7 @@ import { mockIPC } from '@tauri-apps/api/mocks';
 import { CommitGraphView } from './components/CommitGraph';
 import { RemotesPanel } from './components/RemotesPanel';
 import { SettingsPanel } from './components/SettingsPanel';
+import { PanelTabs } from './components/TopBar';
 import { useStore } from './store/useAppStore';
 import { applyTheme, type Theme } from './lib/theme';
 import './styles.css';
@@ -20,7 +21,13 @@ const theme = (new URLSearchParams(location.search).get('theme') as Theme) ?? 'd
 applyTheme(theme);
 
 function label(name: string, kind: RefLabel['kind'], isHead = false): RefLabel {
-  return { name, fullName: `refs/heads/${name}`, kind, isHead, isDetached: false };
+  return {
+    name,
+    fullName: `refs/heads/${name}`,
+    kind,
+    isHead,
+    isDetached: false,
+  };
 }
 
 function node(
@@ -52,17 +59,22 @@ function node(
 }
 
 const nodes: CommitNode[] = [
-  node(0, 0, 'Commit inicial del proyecto'),
-  node(1, 0, 'Anadir modulo de autenticacion', [label('main', 'branch')]),
-  node(2, 1, 'Sidebar: selector de repositorios', [label('feature/sidebar', 'branch')]),
-  node(3, 0, 'Merge de la rama de la sidebar', [], true),
-  node(4, 0, 'Grafo de commits con carriles'),
-  node(5, 1, 'Refactor del panel de diffs', [label('feature/grafo', 'branch')]),
-  node(6, 2, 'Corregir contraste del grafo', [label('fix/contraste', 'branch')]),
-  node(7, 0, 'Merge de contraste', [], true),
-  node(8, 0, 'Tema claro y oscuro', [label('v1.0.0', 'tag')]),
-  node(9, 1, 'Preparar release', [label('release/1.1', 'branch')]),
-  node(10, 0, 'Ajustes de tipografia', [label('main', 'branch', true)], false, true),
+  node(0, 0, 'feat: commit inicial del proyecto'),
+  node(1, 0, 'feat: modulo de autenticacion', [label('main', 'branch')]),
+  node(2, 1, 'feat: sidebar selector de repositorios', [label('feature/sidebar', 'branch')]),
+  node(3, 2, 'fix: contraste del grafo en tema claro', [label('fix/contraste', 'branch')]),
+  node(4, 3, 'docs: guia de contribucion', [label('docs/contribuir', 'branch')]),
+  node(5, 0, 'Merge de la rama de la sidebar', [], true),
+  node(6, 0, 'feat: grafo de commits con carriles'),
+  node(7, 1, 'refactor: panel de diffs', [label('feature/grafo', 'branch')]),
+  node(8, 0, 'Merge de contraste y docs', [], true),
+  node(9, 0, 'test: cobertura del store', []),
+  node(10, 0, 'chore: actualizar dependencias'),
+  node(11, 0, 'perf: virtualizar la lista de commits'),
+  node(12, 0, 'fix: tooltip fuera del viewport', []),
+  node(13, 0, 'feat: tema claro y oscuro', [label('v1.0.0', 'tag')]),
+  node(14, 1, 'docs: preparar release notes', [label('release/1.1', 'branch')]),
+  node(15, 0, 'chore: ajustes de tipografia', [label('main', 'branch', true)], false, true),
 ];
 
 /**
@@ -76,14 +88,19 @@ const parentsOf: Record<number, number[]> = {
   0: [],
   1: [0],
   2: [1],
-  3: [1, 2],
-  4: [3],
-  5: [4],
+  3: [1],
+  4: [1],
+  5: [1, 2],
   6: [5],
-  7: [4, 6],
-  8: [7],
+  7: [6],
+  8: [6, 3, 4],
   9: [8],
-  10: [8],
+  10: [9],
+  11: [10],
+  12: [11],
+  13: [12],
+  14: [13],
+  15: [13],
 };
 
 for (const commit of nodes) {
@@ -109,6 +126,7 @@ for (const commit of nodes) {
 
 const params = new URLSearchParams(location.search);
 const withSettings = params.has('settings');
+
 if (withSettings) useStore.getState().openSettings();
 
 /** Lee un argumento string del payload de un IPC simulado. */
@@ -120,8 +138,7 @@ const arg = (payload: unknown, key: string): string => {
 /** Usuario dentro de la credencial de un IPC simulado. */
 const credentialArg = (payload: unknown): string => {
   const credential = (payload as Record<string, unknown> | undefined)?.credential as
-    | Record<string, unknown>
-    | undefined;
+    Record<string, unknown> | undefined;
   return typeof credential?.username === 'string' ? credential.username : '';
 };
 
@@ -142,7 +159,11 @@ function renderRemotesPreview() {
       return statuses[name] ?? { host: 'sin host', saved: false, username: null };
     }
     if (cmd === 'store_credential') {
-      statuses[name] = { host: 'github.com', saved: true, username: credentialArg(payload) };
+      statuses[name] = {
+        host: 'github.com',
+        saved: true,
+        username: credentialArg(payload),
+      };
       return null;
     }
     if (cmd === 'forget_credential') {
@@ -266,13 +287,15 @@ function renderRemotesPreview() {
 
   createRoot(document.getElementById('root')!).render(
     <div className="app">
-      {/* Rejilla real: la columna del panel mide 340px. */}
+      {/* Rejilla real: sidebar + grafo (el detalle va en un popup). */}
       <div className="layout">
         <aside className="sidebar">
-          <RemotesPanel />
+          <PanelTabs />
+          <div className="sidebar-content">
+            <RemotesPanel />
+          </div>
         </aside>
         <main className="main" />
-        <div className="inspector" />
       </div>
     </div>,
   );
@@ -283,13 +306,13 @@ if (params.get('panel') === 'remotes') {
 } else {
   createRoot(document.getElementById('root')!).render(
     <div className="app">
-      {/* Sin asides laterales: la rejilla real es de tres columnas. */}
+      {/* Sin asides laterales: la rejilla real es de dos columnas. */}
       <div className="layout" style={{ gridTemplateColumns: '1fr' }}>
         <main className="main" style={{ height: '100vh' }}>
           <CommitGraphView
             nodes={nodes}
             edges={edges}
-            laneCount={3}
+            laneCount={4}
             truncated={false}
             totalReachable={128}
           />

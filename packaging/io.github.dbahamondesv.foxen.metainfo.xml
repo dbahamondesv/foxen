@@ -1,20 +1,20 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <component type="desktop-application">
-  <id>com.foxbuntu.foxen</id>
-  <launchable type="desktop-id">Foxen.desktop</launchable>
+  <id>io.github.dbahamondesv.foxen</id>
+  <launchable type="desktop-id">com.foxbuntu.foxen.desktop</launchable>
 
   <name>Foxen</name>
   <summary>Cliente gráfico de Git con grafo de commits interactivo</summary>
 
-  <developer id="com.foxbuntu">
-    <name>Foxbuntu</name>
+  <developer id="io.github.dbahamondesv">
+    <name>Diego Bahamondes</name>
   </developer>
 
   <metadata_license>MIT</metadata_license>
   <project_license>MIT</project_license>
 
-  <url type="homepage">https://github.com/foxbuntu/foxen</url>
-  <url type="bugtracker">https://github.com/foxbuntu/foxen/issues</url>
+  <url type="homepage">https://github.com/dbahamondesv/foxen</url>
+  <url type="bugtracker">https://github.com/dbahamondesv/foxen/issues</url>
 
   <branding>
     <color type="primary" scheme_preference="dark">#1f6feb</color>
@@ -78,15 +78,15 @@
 
   <screenshots>
     <screenshot type="default">
-      <image>https://raw.githubusercontent.com/foxbuntu/foxen/main/packaging/screenshots/graph.png</image>
+      <image>https://raw.githubusercontent.com/dbahamondesv/foxen/main/packaging/screenshots/graph.png</image>
       <caption>Grafo de commits con ramas y tags</caption>
     </screenshot>
     <screenshot>
-      <image>https://raw.githubusercontent.com/foxbuntu/foxen/main/packaging/screenshots/staging.png</image>
+      <image>https://raw.githubusercontent.com/dbahamondesv/foxen/main/packaging/screenshots/staging.png</image>
       <caption>Staging por fragmento y por línea</caption>
     </screenshot>
     <screenshot>
-      <image>https://raw.githubusercontent.com/foxbuntu/foxen/main/packaging/screenshots/merge.png</image>
+      <image>https://raw.githubusercontent.com/dbahamondesv/foxen/main/packaging/screenshots/merge.png</image>
       <caption>Merge y rebase con plan de commits</caption>
     </screenshot>
   </screenshots>

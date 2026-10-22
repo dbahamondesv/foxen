@@ -5,18 +5,10 @@
   "windows": ["main"],
   "permissions": [
     "core:default",
-    "core:window:allow-start-dragging",
-    "core:window:allow-set-title",
-    "core:window:allow-minimize",
-    "core:window:allow-toggle-maximize",
-    "core:window:allow-close",
     "core:webview:allow-internal-toggle-devtools",
     "dialog:allow-open",
-    "dialog:allow-message",
     "dialog:allow-confirm",
     "opener:allow-open-url",
-    "opener:allow-default-urls",
-    "opener:allow-open-path",
-    "opener:allow-reveal-item-in-dir"
+    "opener:allow-default-urls"
   ]
 }

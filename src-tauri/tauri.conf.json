@@ -20,8 +20,7 @@
         "minHeight": 620,
         "resizable": true,
         "fullscreen": false,
-        "center": true,
-        "theme": "Dark"
+        "center": true
       }
     ],
     "security": {
@@ -57,7 +56,7 @@
       "deb": {
         "desktopTemplate": "../packaging/foxen.desktop",
         "files": {
-          "/usr/share/metainfo/com.foxbuntu.foxen.metainfo.xml": "../packaging/com.foxbuntu.foxen.metainfo.xml",
+          "/usr/share/metainfo/io.github.dbahamondesv.foxen.metainfo.xml": "../packaging/io.github.dbahamondesv.foxen.metainfo.xml",
           "/usr/share/icons/hicolor/32x32/apps/com.foxbuntu.foxen.png": "../src-tauri/icons/32x32.png",
           "/usr/share/icons/hicolor/128x128/apps/com.foxbuntu.foxen.png": "../src-tauri/icons/128x128.png",
           "/usr/share/icons/hicolor/256x256/apps/com.foxbuntu.foxen.png": "../src-tauri/icons/128x128@2x.png",
@@ -67,7 +66,7 @@
       "rpm": {
         "desktopTemplate": "../packaging/foxen.hidden.desktop",
         "files": {
-          "/usr/share/metainfo/com.foxbuntu.foxen.metainfo.xml": "../packaging/com.foxbuntu.foxen.metainfo.xml",
+          "/usr/share/metainfo/io.github.dbahamondesv.foxen.metainfo.xml": "../packaging/io.github.dbahamondesv.foxen.metainfo.xml",
           "/usr/share/applications/com.foxbuntu.foxen.desktop": "../packaging/foxen.desktop",
           "/usr/share/icons/hicolor/32x32/apps/com.foxbuntu.foxen.png": "../src-tauri/icons/32x32.png",
           "/usr/share/icons/hicolor/128x128/apps/com.foxbuntu.foxen.png": "../src-tauri/icons/128x128.png",
@@ -77,7 +76,7 @@
       },
       "appimage": {
         "files": {
-          "/usr/share/metainfo/com.foxbuntu.foxen.metainfo.xml": "../packaging/com.foxbuntu.foxen.metainfo.xml",
+          "/usr/share/metainfo/io.github.dbahamondesv.foxen.metainfo.xml": "../packaging/io.github.dbahamondesv.foxen.metainfo.xml",
           "/com.foxbuntu.foxen.png": "../src-tauri/icons/icon.png",
           "/usr/share/icons/hicolor/32x32/apps/com.foxbuntu.foxen.png": "../src-tauri/icons/32x32.png",
           "/usr/share/icons/hicolor/128x128/apps/com.foxbuntu.foxen.png": "../src-tauri/icons/128x128.png",

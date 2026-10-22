@@ -107,8 +107,12 @@ fn collect_commits(
     }
 
     // Primera pasada: descubrir el subgrafo alcanzable acotado por `limit`.
+    let mut truncated = false;
     while let Some(oid) = queue.pop_front() {
         if seen.len() >= limit {
+            // Se alcanzo el tope con trabajo pendiente: si queda cola hay
+            // historia sin mostrar; si no, se recogio todo exactamente.
+            truncated = !queue.is_empty();
             break;
         }
         if let Ok(commit) = repo.find_commit(oid) {
@@ -120,7 +124,16 @@ fn collect_commits(
         }
     }
     let total = seen.len();
-    let truncated = total >= limit;
+
+    // Si se trunco, `seen` esta capeado en `limit`; para que la UI pueda decir
+    // "mostrando X de Y" se cuenta el total real alcanzable. Se acota a
+    // MAX_COMMITS (tope holgado) para no recorrer historias absurdamente
+    // grandes solo por un numero informativo.
+    let total = if truncated {
+        count_reachable(repo, roots)
+    } else {
+        total
+    };
 
     // Segunda pasada: cargar los datos completos de cada commit.
     let mut commits = HashMap::with_capacity(seen.len());
@@ -131,6 +144,32 @@ fn collect_commits(
     }
 
     Ok((commits, truncated, total))
+}
+
+/// Cuenta commits alcanzables desde `roots` sin materializar nada, acotado a
+/// `MAX_COMMITS`. Solo se llama cuando el grafo queda truncado, para poder
+/// informar el total real.
+fn count_reachable(repo: &Repository, roots: &[Oid]) -> usize {
+    let mut seen: HashSet<Oid> = HashSet::new();
+    let mut queue: VecDeque<Oid> = VecDeque::new();
+    for root in roots {
+        if seen.insert(*root) {
+            queue.push_back(*root);
+        }
+    }
+    while let Some(oid) = queue.pop_front() {
+        if seen.len() >= MAX_COMMITS {
+            break;
+        }
+        if let Ok(commit) = repo.find_commit(oid) {
+            for parent in commit.parent_ids() {
+                if seen.insert(parent) {
+                    queue.push_back(parent);
+                }
+            }
+        }
+    }
+    seen.len()
 }
 
 fn load_commit(repo: &Repository, oid: Oid) -> Option<RawCommit> {

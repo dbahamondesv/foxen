@@ -200,7 +200,11 @@ impl AppState {
     /// Abre un repositorio o devuelve el handle existente.
     pub fn open_repository(&self, path: &Path) -> AppResult<RepositoryOpenResult> {
         let id = OpenRepository::id_for_path(path);
-        if let Some(existing) = self.repos.lock().get(&id) {
+        // El guard del mapa se suelta ANTES de tocar el candado de git del repo
+        // (`handle()` lo adquiere): retener los dos candados a la vez formaba un
+        // convoy que congelaba todos los comandos IPC.
+        let existing = self.repos.lock().get(&id).cloned();
+        if let Some(existing) = existing {
             return Ok(RepositoryOpenResult {
                 handle: existing.handle(),
                 already_open: true,
@@ -272,16 +276,23 @@ impl AppState {
     /// Cierra un repositorio abierto.
     pub fn close(&self, repo_id: &str) -> AppResult<()> {
         let mut repos = self.repos.lock();
-        if repos.remove(repo_id).is_none() {
+        let Some(removed) = repos.remove(repo_id) else {
             return Err(AppError::repo_not_found(repo_id));
-        }
+        };
         drop(repos);
-        self.remove_recent(repo_id);
+        // Hay que quitar la entrada por su ruta, ya que el repo se acaba de
+        // retirar del mapa (antes se llamaba a `find` y ya no lo encontraba).
+        let key = removed.path.to_string_lossy().to_string();
+        self.recent.lock().retain(|p| p != &key);
         Ok(())
     }
 
     pub fn list(&self) -> Vec<RepositoryHandle> {
-        self.repos.lock().values().map(|r| r.handle()).collect()
+        // Primero se clonan los handles (suelta el candado del mapa) y luego se
+        // consulta cada repo: nunca se retiene el candado del mapa mientras se
+        // adquiere el de un repositorio, eso bloqueaba el backend entero.
+        let repos: Vec<Arc<OpenRepository>> = self.repos.lock().values().cloned().collect();
+        repos.iter().map(|r| r.handle()).collect()
     }
 
     pub fn recent_paths(&self) -> Vec<String> {
@@ -294,13 +305,6 @@ impl AppState {
         recent.retain(|p| p != &key);
         recent.insert(0, key);
         recent.truncate(MAX_RECENT);
-    }
-
-    fn remove_recent(&self, repo_id: &str) {
-        if let Some(repo) = self.find(repo_id) {
-            let key = repo.path.to_string_lossy().to_string();
-            self.recent.lock().retain(|p| p != &key);
-        }
     }
 }
 

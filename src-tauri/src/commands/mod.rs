@@ -4,10 +4,10 @@
 //! ejecuta en el hilo de la UI. Cada comando envuelve su trabajo en
 //! `spawn_blocking` y devuelve un `AppResult` serializable.
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Arc;
 
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Manager, State};
 
 use crate::error::{AppError, AppResult};
 use crate::git::{
@@ -30,6 +30,16 @@ where
     tauri::async_runtime::spawn_blocking(f)
         .await
         .map_err(|e| AppError::internal(format!("La tarea {label} fallo: {e}")))?
+}
+
+/// Registra el watcher de inotify en el pool de bloqueo, sin retrasar la
+/// respuesta IPC: el recorrido recursivo del arbol puede tardar segundos en
+/// repos con muchos directorios (node_modules, target, builds...).
+fn spawn_watch(app: AppHandle, repo_id: String, dir: PathBuf) {
+    tauri::async_runtime::spawn_blocking(move || {
+        let registry = app.state::<WatchRegistry>();
+        registry.watch(app.clone(), &repo_id, &dir);
+    });
 }
 
 /// Obtiene el handle del repositorio y ejecuta un cierre bloqueante de solo lectura.
@@ -66,7 +76,6 @@ macro_rules! with_repo_mut {
 pub async fn open_repository(
     app: AppHandle,
     state: State<'_, AppState>,
-    watch: State<'_, WatchRegistry>,
     path: String,
     allow_bare: bool,
 ) -> AppResult<RepositoryOpenResult> {
@@ -93,7 +102,8 @@ pub async fn open_repository(
     .await?;
 
     // Vigilancia con inotify: la UI se refresca sola ante cambios externos.
-    watch.watch(app, &result.handle.id, Path::new(&result.handle.path));
+    // Se registra en el pool de bloqueo para no demorar la respuesta IPC.
+    spawn_watch(app, result.handle.id.clone(), PathBuf::from(&result.handle.path));
     Ok(result)
 }
 
@@ -101,7 +111,6 @@ pub async fn open_repository(
 pub async fn clone_repository(
     app: AppHandle,
     state: State<'_, AppState>,
-    watch: State<'_, WatchRegistry>,
     url: String,
     path: String,
 ) -> AppResult<RepositoryOpenResult> {
@@ -113,7 +122,7 @@ pub async fn clone_repository(
     })
     .await?;
 
-    watch.watch(app, &result.handle.id, Path::new(&result.handle.path));
+    spawn_watch(app, result.handle.id.clone(), PathBuf::from(&result.handle.path));
     Ok(result)
 }
 

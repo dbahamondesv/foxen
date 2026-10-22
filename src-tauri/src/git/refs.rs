@@ -351,16 +351,12 @@ pub fn rename(repo: &mut Repository, old: &str, new: &str) -> AppResult<Operatio
         .to_string();
     branch.rename(new, false).map_err(AppError::from_git)?;
 
-    // Reapuntar el upstream si la rama remota existe.
+    // Reapuntar el upstream si la rama remota existe. Se reutiliza el nombre
+    // completo (`refs/remotes/origin/main`) sin recortar el remoto.
     if let Ok(mut renamed) = repo.find_branch(new, BranchType::Local) {
         if let Ok(upstream) = renamed.upstream() {
             if let Some(up_name) = upstream.name().ok().flatten() {
-                let suffix = up_name
-                    .strip_prefix("refs/remotes/")
-                    .and_then(|s| s.split_once('/').map(|(_, rest)| rest));
-                if let Some(rest) = suffix {
-                    let _ = renamed.set_upstream(Some(&format!("refs/remotes/{rest}")));
-                }
+                let _ = renamed.set_upstream(Some(up_name));
             }
         }
     }

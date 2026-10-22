@@ -3,17 +3,65 @@
 import type { ChangeKind, FileStatus } from './types';
 
 /**
- * Colores de carril del grafo.
+ * Colores del grafo.
  *
- * Se referencian como variables CSS (`--lane-N`) definidas en `styles.css` en
- * lugar de hex literales: asi el grafo hereda la paleta del tema activo sin
- * que React tenga que repintarse al cambiar de tema.
+ * El grafo moderno colorea los nodos por *tipo* de commit (feat/fix/docs/chore…)
+ * en lugar de por SHA: así el ojo reconoce de un vistazo la naturaleza del
+ * historial. Cada tipo tiene un tono neón suave dentro del arco cool
+ * magenta → púrpura → azul → cian.
+ */
+const LANE_SAT = 74;
+const LANE_LIGHT = 64;
+
+/** Tonos neón por subtipo de commit (arco cool). */
+export const KIND_HUE: Record<CommitKind, number> = {
+  feature: 265, // púrpura
+  fix: 335, // magenta/rosa
+  docs: 205, // cian-azul
+  refactor: 285, // violeta
+  test: 190, // cian
+  perf: 320, // magenta
+  chore: 220, // azul
+};
+
+/** Tono neón para un tipo de commit. */
+export function kindHue(kind: CommitKind): number {
+  return KIND_HUE[kind];
+}
+
+/** Tono estable (0-359) a partir del SHA, dentro del arco cool (fallback). */
+export function commitHue(oid: string): number {
+  let hash = 0;
+  for (let i = 0; i < oid.length; i++) {
+    hash = oid.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  const norm = Math.abs(hash) % 100;
+  return (335 + norm) % 360;
+}
+
+/** Color del carril/nodo a partir de un tono. */
+export function hueColor(hue: number, lightness = LANE_LIGHT): string {
+  return `hsl(${hue}, ${LANE_SAT}%, ${lightness}%)`;
+}
+
+/**
+ * Cantidad de colores de carril (`--lane-0` … `--lane-9`).
+ *
+ * El grafo moderno separa RAMAS por carril: cada carril toma un color de esta
+ * paleta (definida en `styles.css` por tema), mientras que el Nodo se colorea
+ * por *tipo* de commit. Asi conviven «color por rama» y «color por tipo».
  */
 export const LANE_COLOR_COUNT = 10;
 
+/** Indice estable (0..LANE_COLOR_COUNT-1) del color de un carril. */
+export function laneColorIndex(lane: number): number {
+  const n = Math.trunc(lane);
+  return ((n % LANE_COLOR_COUNT) + LANE_COLOR_COUNT) % LANE_COLOR_COUNT;
+}
+
+/** Referencia a la variable CSS del color de carril (para DOM). */
 export function laneColor(lane: number): string {
-  const index = ((lane % LANE_COLOR_COUNT) + LANE_COLOR_COUNT) % LANE_COLOR_COUNT;
-  return `var(--lane-${index})`;
+  return `var(--lane-${laneColorIndex(lane)})`;
 }
 
 /** Clase CSS segun el tipo de cambio. */
@@ -50,12 +98,12 @@ interface CommitKindMeta {
 
 const COMMIT_KIND_MAP: Record<CommitKind, CommitKindMeta> = {
   feature: { kind: 'feature', badge: 'F', label: 'feature' },
-  fix: { kind: 'fix', badge: 'D', label: 'fix' },
-  docs: { kind: 'docs', badge: 'docs', label: 'documentación' },
-  chore: { kind: 'chore', badge: 'chore', label: 'mantenimiento' },
-  refactor: { kind: 'refactor', badge: 'refactor', label: 'refactor' },
-  test: { kind: 'test', badge: 'test', label: 'pruebas' },
-  perf: { kind: 'perf', badge: 'perf', label: 'rendimiento' },
+  fix: { kind: 'fix', badge: 'X', label: 'fix' },
+  docs: { kind: 'docs', badge: 'D', label: 'documentación' },
+  chore: { kind: 'chore', badge: 'C', label: 'mantenimiento' },
+  refactor: { kind: 'refactor', badge: 'R', label: 'refactor' },
+  test: { kind: 'test', badge: 'T', label: 'pruebas' },
+  perf: { kind: 'perf', badge: 'P', label: 'rendimiento' },
 };
 
 /** Prefijos convencionales (Conventional Commits) que mapean a cada categoria. */

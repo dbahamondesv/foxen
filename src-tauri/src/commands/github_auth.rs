@@ -196,7 +196,10 @@ pub async fn github_device_flow_configured() -> AppResult<bool> {
 /// Obtiene el usuario de GitHub actualmente autenticado (llavero o sesión de `gh`).
 #[tauri::command]
 pub async fn github_get_user() -> AppResult<Option<GitHubUser>> {
-    let token = github_token()?;
+    // Sin token no es un error: simplemente no hay sesión.
+    let Ok(token) = github_token() else {
+        return Ok(None);
+    };
     let auth = GitHubAuth::new();
     match auth.get_user_info(&token).await {
         Ok(user) => Ok(Some(user)),
@@ -249,14 +252,19 @@ pub async fn github_publish_repo(
     replace_origin: bool,
 ) -> AppResult<GitHubRepo> {
     let token = github_token()?;
+
+    // Validar el repositorio local ANTES de crear nada en GitHub: si el
+    // `repo_id` es desconocido o hay otra operacion en curso, no debe quedar un
+    // repositorio remoto huerfano (lo contrario producia repos duplicados).
+    let handle = state.require(&repo_id)?;
+    let op = handle.clone();
+    let _guard = op.try_begin_op()?;
+
     let auth = GitHubAuth::new();
     let created = auth
         .create_repo(&token, &name, private, description.as_deref(), owner.as_deref())
         .await?;
 
-    let handle = state.require(&repo_id)?;
-    let op = handle.clone();
-    let _guard = op.try_begin_op()?;
     let clone_url = created.clone_url.clone();
 
     tauri::async_runtime::spawn_blocking(move || {

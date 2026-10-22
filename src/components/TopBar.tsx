@@ -160,7 +160,7 @@ export function TopBar() {
       return;
     }
     void run('Crear commit', async () => {
-      const result = await ipc.createCommit(repoId, message, false, false, false);
+      const result = await ipc.createCommit(repoId, message, false, false, true);
       setCommitMessage('');
       return result;
     });
@@ -331,7 +331,7 @@ export function PanelTabs() {
   };
 
   return (
-    <nav className="panel-tabs" role="tablist">
+    <nav className="panel-tabs" role="tablist" aria-orientation="vertical">
       {PANELS.map(({ id, label, icon }) => {
         const badge = badgeFor(id);
         return (
@@ -341,9 +341,12 @@ export function PanelTabs() {
             role="tab"
             aria-selected={panel === id}
             className={`panel-tab${panel === id ? ' is-active' : ''}`}
+            title={label}
             onClick={() => setPanel(id)}
           >
-            <span className="tab-icon">{icon}</span>
+            <span className="tab-icon" aria-hidden="true">
+              {icon}
+            </span>
             <span className="tab-label">{label}</span>
             {badge !== null && <span className="tab-badge">{badge}</span>}
           </button>

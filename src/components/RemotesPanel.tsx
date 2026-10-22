@@ -423,7 +423,7 @@ export function FlowPanel() {
 /** Panel de reflog. */
 export function ReflogPanel() {
   const reflog = useStore((s) => s.reflog);
-  const selectCommit = useStore((s) => s.selectCommit);
+  const openDetail = useStore((s) => s.openDetail);
 
   if (reflog.length === 0) return <p className="empty">Sin entradas de reflog.</p>;
 
@@ -432,7 +432,7 @@ export function ReflogPanel() {
       <ul className="reflog-list">
         {reflog.map((entry) => (
           <li key={`${entry.oid}-${entry.index}`}>
-            <button type="button" className="reflog-entry" onClick={() => void selectCommit(entry.oid)}>
+            <button type="button" className="reflog-entry" onClick={() => openDetail(entry.oid)}>
               <span className="reflog-msg">{entry.message}</span>
               <span className="reflog-meta">
                 <code>{entry.shortOid}</code>

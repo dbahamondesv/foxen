@@ -3,7 +3,7 @@ import * as ipc from '../lib/ipc';
 import { authorColor, authorInitial, baseName, changeColor } from '../lib/format';
 
 /** Detalle del commit seleccionado: metadatos, mensaje y archivos. */
-export function CommitDetailView() {
+export function CommitDetailView({ onFileOpen }: { onFileOpen?: () => void }) {
   const repoId = useStore((s) => s.repoId);
   const detail = useStore((s) => s.selectedDetail);
   const run = useStore((s) => s.run);
@@ -124,7 +124,10 @@ export function CommitDetailView() {
             <button
               type="button"
               className="detail-file"
-              onClick={() => void selectFile(file.path, 'commit', detail.oid)}
+              onClick={() => {
+                void selectFile(file.path, 'commit', detail.oid);
+                onFileOpen?.();
+              }}
             >
               <span className={`status-cell ${changeColor(file.kind)}`}>{file.statusChar}</span>
               <span className="file-name" title={file.path}>

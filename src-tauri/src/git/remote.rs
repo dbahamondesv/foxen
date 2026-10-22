@@ -531,6 +531,8 @@ pub fn push(
     delete_remote: bool,
     credential: Option<&Credential>,
 ) -> AppResult<PushResult> {
+    use std::sync::{Arc, Mutex};
+
     let start = Instant::now();
 
     let mut remote = repo
@@ -548,35 +550,59 @@ pub fn push(
         };
         refspecs.push(if delete_remote {
             format!(":{full}")
+        } else if force {
+            // `+` es lo que convierte el refspec en un force push real.
+            format!("+{full}:{full}")
         } else {
             format!("{full}:{full}")
         });
     } else if !delete_remote {
-        refspecs.push("refs/heads/*:refs/heads/*".to_string());
+        let prefix = if force { "+" } else { "" };
+        refspecs.push(format!("{prefix}refs/heads/*:refs/heads/*"));
     }
 
     if refspecs.is_empty() {
         return Err(AppError::validation("No hay refs que enviar"));
     }
 
+    // El callback de actualizacion informa que refs cambio el servidor de verdad:
+    // asi el resultado refleja la realidad (y no el numero de refspecs).
+    let updated_refs: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+    let rejected: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+
     let mut options = PushOptions::new();
-    options.remote_callbacks(callbacks(host.clone(), credential.cloned()));
+    {
+        let mut cbs = callbacks(host.clone(), credential.cloned());
+        let updated_refs = Arc::clone(&updated_refs);
+        let rejected = Arc::clone(&rejected);
+        cbs.push_update_reference(move |refname, status| {
+            match status {
+                None => {
+                    if let Ok(mut refs) = updated_refs.lock() {
+                        refs.push(refname.to_string());
+                    }
+                }
+                Some(error) => {
+                    if let Ok(mut refs) = rejected.lock() {
+                        refs.push(format!("{refname}: {error}"));
+                    }
+                }
+            }
+            Ok(())
+        });
+        options.remote_callbacks(cbs);
+    }
 
     let specs: Vec<&str> = refspecs.iter().map(|s| s.as_str()).collect();
-    let mut errors: Vec<String> = Vec::new();
 
     // `remote.push` conecta internamente usando `options` (con los callbacks de
     // autenticacion). No llamar antes a `remote.connect`: conecta sin callbacks.
-    // `Remote::push` ya no acepta un callback por referencia en git2 0.20: el
-    // conteo de refs se obtiene del estado local tras la operacion.
     remote
         .push(&specs, Some(&mut options))
-        .map_err(|e| {
-            errors.push(format!("{remote_name}: {}", e.message()));
-            network_error(e, remote_name)
-        })?;
+        .map_err(|e| network_error(e, remote_name))?;
 
-    let updated = specs.len();
+    let updated_refs = updated_refs.lock().map(|r| r.clone()).unwrap_or_default();
+    let rejected = rejected.lock().map(|r| r.clone()).unwrap_or_default();
 
     if set_upstream {
         if let Some(name) = branch {
@@ -591,20 +617,33 @@ pub fn push(
         store_credential(&host, cred)?;
     }
 
-    let up_to_date = updated == 0 && errors.is_empty();
-    let message = if !errors.is_empty() {
-        errors.join("; ")
+    let updated = updated_refs.len();
+    let rejected_updates = !rejected.is_empty();
+    let up_to_date = updated == 0 && !rejected_updates;
+
+    let message = if rejected_updates {
+        format!("El remoto rechazo: {}", rejected.join("; "))
+    } else if delete_remote && updated > 0 {
+        format!("{updated} ref(s) eliminada(s) en {remote_name}")
     } else if up_to_date {
         "Todo estaba actualizado".to_string()
     } else {
         format!("{updated} ref(s) enviada(s) a {remote_name}")
     };
 
+    if rejected_updates {
+        return Err(AppError::new(
+            ErrorKind::Network,
+            format!("El remoto {remote_name} rechazo la actualizacion"),
+        )
+        .with_detail(rejected.join("; ")));
+    }
+
     Ok(PushResult {
         remote: remote_name.to_string(),
         branch: branch.unwrap_or("*").to_string(),
         refs_updated: updated,
-        refs_deleted: usize::from(delete_remote),
+        refs_deleted: if delete_remote { updated } else { 0 },
         forced: force,
         up_to_date,
         message,

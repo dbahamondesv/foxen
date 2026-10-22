@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useStore } from '../store/useAppStore';
 import * as ipc from '../lib/ipc';
 import { baseName, changeColor, dirName, statusChar } from '../lib/format';
+import { generateCommitMessage } from '../lib/commitMessage';
 import type { FileStatus, HunkSelection, LineSelection } from '../lib/types';
 
 /** Agrupa los archivos por directorio para mostrar un arbol plano. */
@@ -59,6 +60,16 @@ export function ChangesPanel() {
       ),
     );
 
+  /** Rellena el mensaje con una propuesta generada a partir del stage. */
+  const generateMessage = () => {
+    const suggestion = generateCommitMessage(staged);
+    if (!suggestion) {
+      notify('info', 'Añade archivos al stage para generar un mensaje');
+      return;
+    }
+    setCommitMessage(suggestion);
+  };
+
   const discard = (file: FileStatus) => {
     void run(`Descartar ${baseName(file.path)}`, () => ipc.discardFiles(repoId, [file.path]));
   };
@@ -76,19 +87,10 @@ export function ChangesPanel() {
       return;
     }
     void run('Crear commit', async () => {
-      const result = await ipc.createCommit(repoId, message, false, false, false);
+      const result = await ipc.createCommit(repoId, message, false, false, true);
       setCommitMessage('');
       return result;
     });
-  };
-
-  const amend = () => {
-    const message = commitMessage.trim();
-    if (!message) {
-      notify('error', 'El mensaje del amend no puede estar vacio');
-      return;
-    }
-    void run('Amend', () => ipc.createCommit(repoId, message, true, false, false));
   };
 
   const stashAll = () => void run('Crear stash', () => ipc.pushStash(repoId, null, true, false, false));
@@ -100,7 +102,7 @@ export function ChangesPanel() {
       return;
     }
     void run('Commit y push', async () => {
-      await ipc.createCommit(repoId, message, false, false, false);
+      await ipc.createCommit(repoId, message, false, false, true);
       setCommitMessage('');
       return useStore.getState().pushCurrent();
     });
@@ -287,8 +289,13 @@ export function ChangesPanel() {
           >
             Commit y push
           </button>
-          <button type="button" disabled={!status.headOid} onClick={amend}>
-            Amend
+          <button
+            type="button"
+            disabled={staged.length === 0}
+            onClick={generateMessage}
+            title="Generar un mensaje a partir de los cambios en el stage"
+          >
+            Generar mensaje
           </button>
           <button
             type="button"
@@ -308,6 +315,8 @@ export function DiffPanel() {
   const repoId = useStore((s) => s.repoId);
   const diff = useStore((s) => s.diff);
   const selectedFile = useStore((s) => s.selectedFile);
+  const selectedSide = useStore((s) => s.selectedSide);
+  const selectFile = useStore((s) => s.selectFile);
   const run = useStore((s) => s.run);
   // La clave incluye el hunk: antes se indexaba solo por `lineIndex`, asi que
   // excluir la linea 0 de un hunk excluia tambien la linea 0 de todos los demas.
@@ -325,6 +334,8 @@ export function DiffPanel() {
 
   const file = diff.files[0];
   if (!file) return <p className="empty">Sin diferencias para este archivo.</p>;
+  // Los diffs de un commit son de solo lectura: no se stagea ni se descarta.
+  const canEdit = selectedSide !== 'commit';
 
   const selectionFor = (hunkIndex: number): HunkSelection => {
     const skip = excluded[file.path];
@@ -341,7 +352,7 @@ export function DiffPanel() {
       oldPath: file.oldPath,
       hunkIndices: [hunkIndex],
       lineSelections,
-      unstage: false,
+      unstage: selectedSide === 'staged',
     };
   };
 
@@ -357,13 +368,14 @@ export function DiffPanel() {
   };
 
   const stageHunk = (hunkIndex: number) =>
-    void run('Hacer stage del fragmento', () =>
-      ipc.stageHunks(repoId, [selectionFor(hunkIndex)]),
+    void run(
+      selectedSide === 'staged' ? 'Quitar del stage' : 'Hacer stage del fragmento',
+      () => ipc.stageHunks(repoId, [selectionFor(hunkIndex)]),
     );
 
   const discardHunk = (hunkIndex: number) =>
     void run('Descartar fragmento', () =>
-      ipc.discardHunk(repoId, file.path, hunkIndex, true),
+      ipc.discardHunk(repoId, file.path, hunkIndex, selectedSide === 'staged'),
     );
 
   if (file.isBinary) return <p className="empty">Archivo binario: no se puede mostrar el diff.</p>;
@@ -372,6 +384,15 @@ export function DiffPanel() {
   return (
     <div className="panel-body diff">
       <div className="diff-header">
+        {canEdit && (
+          <button
+            type="button"
+            className="detail-back"
+            onClick={() => void selectFile(null)}
+          >
+            ← Volver
+          </button>
+        )}
         <strong>{file.path}</strong>
         <span className="file-stats">
           <span className="ins">+{file.additions}</span>
@@ -383,14 +404,21 @@ export function DiffPanel() {
         <div key={hunkIndex} className="hunk">
           <div className="hunk-header">
             <code>{hunk.header}</code>
-            <div className="hunk-actions">
-              <button type="button" className="link" onClick={() => stageHunk(hunkIndex)}>
-                stagear
-              </button>
-              <button type="button" className="link danger" onClick={() => discardHunk(hunkIndex)}>
-                descartar
-              </button>
-            </div>
+            {canEdit && (
+              <div className="hunk-actions">
+                <button type="button" className="link" onClick={() => stageHunk(hunkIndex)}>
+                  {selectedSide === 'staged' ? 'quitar del stage' : 'stagear'}
+                </button>
+                <button
+                  type="button"
+                  className="link danger"
+                  hidden={selectedSide === 'staged'}
+                  onClick={() => discardHunk(hunkIndex)}
+                >
+                  descartar
+                </button>
+              </div>
+            )}
           </div>
 
           {hunk.lines.map((line, lineIndex) => {
@@ -401,12 +429,14 @@ export function DiffPanel() {
             return (
               <div
                 key={lineIndex}
-                className={`diff-line ${cls}${isExcluded ? ' is-excluded' : ''}`}
-                onClick={() => toggleLine(hunkIndex, lineIndex)}
-                role="button"
-                tabIndex={0}
+                className={`diff-line ${cls}${isExcluded ? ' is-excluded' : ''}${canEdit ? '' : ' is-readonly'}`}
+                onClick={() => {
+                  if (canEdit) toggleLine(hunkIndex, lineIndex);
+                }}
+                role={canEdit ? 'button' : undefined}
+                tabIndex={canEdit ? 0 : undefined}
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter') toggleLine(hunkIndex, lineIndex);
+                  if (canEdit && e.key === 'Enter') toggleLine(hunkIndex, lineIndex);
                 }}
               >
                 <span className="ln">{line.oldLineno ?? ''}</span>
@@ -420,7 +450,7 @@ export function DiffPanel() {
       ))}
 
       {file.hunks.length === 0 && <p className="empty">Sin cambios visibles.</p>}
-      <p className="hint">Pulsa una linea para excluirla del siguiente stage.</p>
+      {canEdit && <p className="hint">Pulsa una linea para excluirla del siguiente stage.</p>}
     </div>
   );
 }

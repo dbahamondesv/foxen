@@ -2,7 +2,7 @@
 Name=Foxen
 GenericName=Cliente gráfico de Git
 Comment=Cliente de escritorio para gestionar repositorios Git con grafo de commits
-Exec=foxen %f
+Exec=foxen %u
 Icon=com.foxbuntu.foxen
 Terminal=false
 Type=Application

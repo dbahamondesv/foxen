@@ -95,8 +95,11 @@ pub fn commit(repo: &Repository, opts: CommitOptions<'_>) -> AppResult<Operation
     // aplica (se reutilizan los padres del commit original).
     let merge_heads = if opts.amend { Vec::new() } else { merge_head_oids(repo) };
 
-    // El amend reutiliza el arbol y los padres del commit original.
-    let (tree, parents, target_oid) = if opts.amend {
+    // El amend reutiliza los padres del commit original, pero NO su arbol: el
+    // arbol nuevo se construye siempre desde el indice (que ya incluye los
+    // cambios staged/explicitos), de lo contrario se recrearia el commit viejo
+    // ignorando lo que el usuario selecciono.
+    let (parents, target_oid) = if opts.amend {
         let target_rev = opts
             .target
             .map(|t| t.to_string())
@@ -104,19 +107,11 @@ pub fn commit(repo: &Repository, opts: CommitOptions<'_>) -> AppResult<Operation
             .ok_or_else(|| AppError::invalid_state("No hay ningun commit para enmendar"))?;
 
         let original = crate::git::refs::resolve_commit(repo, &target_rev)?;
-        let tree = original.tree().map_err(AppError::from_git)?;
         let parents: Vec<git2::Oid> = original.parent_ids().collect();
         let oid = original.id();
 
-        // `git commit --amend` conserva el arbol recien construido.
-        if !opts.staged_only && tree_oid != tree.id() {
-            // Se permite enmendar con el arbol del indice (edicion de contenido).
-        }
-        (tree, parents, Some(oid))
+        (parents, Some(oid))
     } else {
-        let tree = repo
-            .find_tree(tree_oid)
-            .map_err(AppError::from_git)?;
         let head_oid = repo
             .head()
             .ok()
@@ -124,8 +119,10 @@ pub fn commit(repo: &Repository, opts: CommitOptions<'_>) -> AppResult<Operation
             .map(|c| c.id());
         let mut parents: Vec<git2::Oid> = head_oid.into_iter().collect();
         parents.extend(merge_heads.iter().copied());
-        (tree, parents, None)
+        (parents, None)
     };
+
+    let tree_for_commit = repo.find_tree(tree_oid).map_err(AppError::from_git)?;
 
     // Rechazar commits vacios salvo que se pidan explicitamente o sea un amend.
     // Un commit de fusion es valido aunque su arbol coincida con el primer
@@ -137,7 +134,7 @@ pub fn commit(repo: &Repository, opts: CommitOptions<'_>) -> AppResult<Operation
                     .find_commit(*parent_oid)
                     .ok()
                     .and_then(|c| c.tree().ok());
-                tree.id() != parent_tree.map(|t| t.id()).unwrap_or(tree.id())
+                tree_for_commit.id() != parent_tree.map(|t| t.id()).unwrap_or(tree_for_commit.id())
             }
             None => true,
         };
@@ -147,13 +144,6 @@ pub fn commit(repo: &Repository, opts: CommitOptions<'_>) -> AppResult<Operation
             ));
         }
     }
-
-    let tree_for_commit = if opts.amend && !opts.staged_only {
-        // Respetar el contenido staged en el amend.
-        repo.find_tree(tree_oid).map_err(AppError::from_git)?
-    } else {
-        tree
-    };
 
     let parent_commits = resolve_parents(repo, &parents)?;
     let parent_refs: Vec<&Commit<'_>> = parent_commits.iter().collect();
@@ -171,6 +161,16 @@ pub fn commit(repo: &Repository, opts: CommitOptions<'_>) -> AppResult<Operation
     };
 
     let update_ref = if tip_consistent { Some("HEAD") } else { None };
+    if let Some(target) = target_oid {
+        if head_tip != Some(target) {
+            return Err(AppError::invalid_state(
+                "Solo se puede enmendar el ultimo commit de la rama",
+            )
+            .with_detail(
+                "Enmendar un commit intermedio dejaria fuera a los commits posteriores; usa rebase interactivo",
+            ));
+        }
+    }
     let new_oid = repo
         .commit(update_ref, &sig, &sig, message, &tree_for_commit, &parent_refs)
         .map_err(|e| {
@@ -458,10 +458,10 @@ pub fn checkout_conflict_side(repo: &Repository, path: &str, side: ConflictSide)
     };
 
     let blob = repo.find_blob(blob_oid).map_err(AppError::from_git)?;
-    let full = repo
+    let workdir = repo
         .workdir()
-        .ok_or_else(|| AppError::invalid_state("Repositorio bare"))?
-        .join(path);
+        .ok_or_else(|| AppError::invalid_state("Repositorio bare"))?;
+    let full = crate::git::util::safe_worktree_path(workdir, path)?;
     if let Some(parent) = full.parent() {
         std::fs::create_dir_all(parent).map_err(AppError::from_io)?;
     }

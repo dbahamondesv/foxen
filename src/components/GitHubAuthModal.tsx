@@ -38,6 +38,9 @@ export function GitHubAuthModal() {
 
   const pollingRef = useRef(false);
   const dialogRef = useRef<HTMLDivElement>(null);
+  // Temporizador de exito: se guarda para poder cancelarlo si el modal se cierra
+  // antes de que dispare (si no, reabriria el modal de repos por sorpresa).
+  const successTimerRef = useRef<number | undefined>(undefined);
 
   // Iniciar el flujo de login automáticamente al abrir el modal
   const startFlow = async (overrideClientId?: string) => {
@@ -73,10 +76,10 @@ export function GitHubAuthModal() {
         setSuccessUser(result.username ?? 'usuario');
         await refreshUser();
         notify('success', `Conectado a GitHub como @${result.username ?? 'usuario'}`);
-        setTimeout(() => {
+        successTimerRef.current = window.setTimeout(() => {
           close();
           openRepos();
-        }, 1200);
+          }, 1200);
       } else if (result.error) {
         setErrorMsg(result.errorDescription ?? result.error);
       }
@@ -99,10 +102,10 @@ export function GitHubAuthModal() {
         setSuccessUser(res.username ?? 'usuario');
         await refreshUser();
         notify('success', `Conectado a GitHub como @${res.username ?? 'usuario'}`);
-        setTimeout(() => {
+        successTimerRef.current = window.setTimeout(() => {
           close();
           openRepos();
-        }, 1200);
+          }, 1200);
       } else {
         setErrorMsg(res.errorDescription ?? res.error ?? 'No se pudo iniciar sesión con gh');
       }
@@ -116,6 +119,7 @@ export function GitHubAuthModal() {
   useEffect(() => {
     return () => {
       pollingRef.current = false;
+      window.clearTimeout(successTimerRef.current);
     };
   }, []);
 
@@ -185,10 +189,10 @@ export function GitHubAuthModal() {
         setSuccessUser(res.username ?? 'usuario');
         await refreshUser();
         notify('success', `Conectado con token a GitHub como @${res.username}`);
-        setTimeout(() => {
+        successTimerRef.current = window.setTimeout(() => {
           close();
           openRepos();
-        }, 1200);
+          }, 1200);
       } else {
         setErrorMsg(res.errorDescription ?? 'Token inválido');
       }

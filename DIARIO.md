@@ -406,3 +406,263 @@ terminal. Ahora:
   - `cargo check` OK (0.83s).
   - `vite build` OK (bundle de producción generado correctamente en 5.69s).
 
+
+## 2026-10-20 (noche)
+
+### ⚠️ Regla de trabajo (dictatorial)
+- **Solo análisis**: no se escribe, modifica ni borra código sin autorización
+  explícita del propietario, caso por caso. Esta entrada y las futuras de
+  diagnóstico son la única excepción (documentación en `DIARIO.md`).
+
+### Diagnóstico: la app se queda colgada al abrir un repositorio
+Análisis estático del camino completo de apertura (`openPath` →
+`open_repository` → watcher → `refreshAll`), sin ejecutar código. Causas
+ordenadas por probabilidad, con evidencia:
+
+#### 1. El watcher inotify bloquea la respuesta IPC del comando (alto)
+- `commands/mod.rs:96`: tras abrir el repo, `watch.watch(...)` se ejecuta
+  **síncrono en el hilo del runtime asíncrono** (antipatrón: operación
+  bloqueante en contexto async) y el comando `open_repository` **no devuelve
+  la respuesta al frontend hasta que termine**.
+- `watch.rs:84`: `watcher.watch(&root, RecursiveMode::Recursive)` recorre el
+  árbol completo registrando un watch por directorio. En este repo hay ~4.000
+  directorios (node_modules 1.167 + src-tauri/target 2.570 + .git); en repos
+  con artefactos de build grandes son decenas de miles → el spinner de
+  "abriendo" espera minutos. Con `fs.inotify.max_user_watches` agotado el
+  registro degrada, pero el recorrido igual se hace.
+
+#### 2. Convoy de bloqueos por el candado del mapa de repos (alto)
+- `repo.rs:283-285` `AppState::list()` sostiene el `Mutex` del **mapa**
+  (`repos`) mientras llama `handle()` a cada repo, y `handle()` adquiere el
+  candado de git de cada uno. Si una operación larga (status, grafo, fetch)
+  retiene el candado de un repo, `list_repositories` **bloquea el mapa entero**.
+- `repo.rs:201-208`: en `open_repository`, el guard del mapa sobrevive a todo
+  el bloque `if let` (temporales del scrutinee en Rust 2021) y `existing.handle()`
+  adquiere el candado de git → un repo ya abierto con operación en vuelo
+  encadena el bloqueo.
+- Consecuencia: cualquier `require()` (todos los comandos IPC pasan por él)
+  queda detrás del candado del mapa → **todo el backend se congela** mientras
+  dure la operación larga. El flujo de apertura usa justo esa cadena:
+  `open_repository` → `list_repositories` (`refreshRepositories`) → `refreshAll`.
+
+#### 3. `get_status` calcula un diff completo por archivo cambiado (alto)
+- `staging.rs:144` llama `delta_stats(...)` por cada entrada del status, y
+  `staging.rs:231-260` `delta_stats` ejecuta `diff()` completo (por archivo).
+  Es O(N) diffs dentro de una sola retención del candado de git.
+- `status()` usa `include_untracked + recurse_untracked_dirs` y luego
+  `conflicted_paths_in_workdir` vuelve a barrer `statuses` leyendo cada archivo
+  candidato a conflicto (`staging.rs:30-69`).
+- Se ejecuta en **cada** `refreshAll` (watcher, foco de ventana, F5/Ctrl+R,
+  y ahora también con cada evento `git://changed`). En repos con árboles
+  grandes (music-player: 17 GB, 26k ficheros) o muchos cambios, el status
+  tarda segundos→minutos y, por el punto 2, todo lo demás se encola detrás.
+
+#### 4. Tormentas de refresco sin coalescencia ni cancelación (medio-alto)
+- `App.tsx:72-111`: el listener `git://changed` (200 ms) y el listener de
+  foco (500 ms) disparan `refreshAll` sin deduplicación; el diálogo nativo de
+  "Abrir" pierde foco y al cerrarlo **dispara otro `refreshAll` justo cuando
+  `openPath` ya está refrescando** → refrescos solapados.
+- `refreshAll` (`useAppStore.ts:457-474`) lanza 7 comandos `spawn_blocking`
+  que se serializan sobre el mismo candado de git. Con eventos continuos
+  (p. ej. una build en `target/` dentro del repo vigilado), las tareas se
+  acumulan sin límite en el pool de bloqueo: el IPC nunca responde y la UI
+  queda "cargando" indefinidamente.
+- Bucle de realimentación propio: el primer `status` de libgit2 refresca y
+  **escribe `.git/index`** → evento Modify del watcher (solo se filtran los
+  Access en `watch.rs:71`) → otro `refreshAll`.
+
+#### 5. Operaciones de red sin timeout con el candado de git puesto (medio)
+- Fetch/push/pull (`remote.rs`) retienen el candado de git durante toda la
+  operación de red; no se configura timeout de red de libgit2 y
+  `credential_from_helper` (`remote.rs:147-197`) ejecuta `git credential fill`
+  que, con helpers que abren prompt (gh/GCM/libsecret), puede esperar
+  indefinidamente. Un host inalcanzable congela el repo para siempre, y por
+  el punto 2 congela la app entera (incluso la apertura de otros repos).
+
+#### 6. Redibujado del grafo en el hilo de UI (bajo, amplificador)
+- El canvas mide `nodos × 38px × zoom` de alto (~28.500 px con 750 commits);
+  `drawBase` (`CommitGraph.tsx:284-412`) repinta **todas** las aristas y nodos
+  por fotograma, y la animación de entrada (720 ms) lo hace cada frame; en
+  WebKitGTK con render por software eso puede congelar segundos la UI justo
+  al cargar el grafo tras abrir.
+- `useLayoutEffect` (`CommitGraph.tsx:539-545`) depende de `drawBase`, cuya
+  identidad cambia con `hoverOid` → redibujado completo del canvas en cada
+  cambio de hover.
+
+#### Cómo se compone el colgado observable al abrir
+1. `open_repository` responde tarde (1) mientras el spinner gira.
+2. `refreshAll` hace status+grafo serializados sobre el candado (3); el
+   status escribe el índice y dispara el watcher (4) → más refrescos en cola.
+3. Cualquier operación anterior retenida (5) o la acumulación de tareas (4)
+   deja `list_repositories` y todos los comandos detrás del candado del mapa
+   (2): **la UI no recibe nunca más respuestas** y parece colgada.
+4. El grafo pintado añade la congestión de la UI (6).
+
+#### Próximos pasos (requieren autorización para implementar)
+- Mover `watch.watch()` a `spawn_blocking` y devolver el handle antes de
+  registrar el watcher (o registrarlo diferido).
+- Nunca retener el candado del mapa de repos mientras se toca un candado de
+  git (`list()`, `if let` de `open_repository`).
+- Quitar `delta_stats` del status (calcularlo bajo demanda al seleccionar
+  archivo) o hacerlo barato y acotado.
+- Coalescer `refreshAll` (una invocación en vuelo como máximo, con "pendiente").
+- Timeouts de red + abortación en fetch/pull/push.
+- Diagnóstico empírico pendiente: reproducir con `RUST_LOG=debug` y
+  `py-spy`/`gdb` sobre el proceso para confirmar qué candado está retenido.
+
+## 2026-10-20 (noche, fix de fondo)
+
+Autorizado por el propietario. Se implementan las causas 1-4 del diagnóstico;
+la 5 (red sin timeout) queda pendiente por falta de API de timeout en
+`git2 0.20` (requeriría `Remote::stop()` con watchdog, demasiado invasivo).
+
+### 1. Watcher fuera del hilo de respuesta (`commands/mod.rs`)
+- Nuevo helper `spawn_watch(app, repo_id, dir)` que registra el watcher en
+  `spawn_blocking`. `open_repository` y `clone_repository` responden al
+  frontend **antes** de recorrer el árbol con inotify (ya no reciben el
+  parámetro `State<WatchRegistry>`, que ahora se resuelve dentro del hilo).
+- `use std::path::{Path, PathBuf}` → `PathBuf` (Path ya no se usa).
+
+### 2. Sin convoy de candados (`git/repo.rs`)
+- `open_repository`: `let existing = self.repos.lock().get(&id).cloned();` en un
+  statement propio; el guard del mapa se suelta antes de `existing.handle()`
+  (adquiere el candado de git). Elimina el temporales del scrutinee del `if let`.
+- `AppState::list()`: clona todos los `Arc<OpenRepository>` con el guard del
+  mapa y **luego** llama `handle()` fuera del candado.
+
+### 3. `status()` en dos pases de diff, no O(N) (`git/staging.rs`)
+- Nuevo `bulk_diff_stats(repo, kind)` con `enum DiffKind { Staged, Worktree }`:
+  un solo diff global HEAD↔índice y otro índice↔worktree; de ahí se derivan
+  inserciones/borrados/binario por ruta vía `Patch::line_stats()` y
+  `DiffDelta::flags() == DiffFlags::BINARY` (git2 0.20 no expone
+  `Patch::is_binary`). Respeta `DEFAULT_MAX_FILE_BYTES`.
+- Con `statuses.is_empty()` se saltan ambos pases (árbol limpio → abre rápido).
+- `conflicted_paths_in_workdir` se divide: la detección de marcadores pasa a
+  `conflict_markers_in(repo, &statuses)`, reutilizando los statuses ya
+  calculados (antes barría `repo.statuses()` una segunda vez). La función
+  pública se mantiene para `commit_ops.rs`.
+
+### 4. `refreshAll` coalescido (`src/store/useAppStore.ts`)
+- Flags de módulo `refreshInFlight` / `refreshQueued`: si ya hay un refresco en
+  vuelo, la nueva llamada solo marca "pendiente" en vez de apilar 7
+  `spawn_blocking` más. Al terminar, si quedó pendiente, hace un único repaso;
+  si cambió el `repoId` a mitad, el repaso se descarta.
+
+### Verificación
+- `cargo check`: OK. `cargo test --lib`: 9 passed. `cargo test --test
+  git_integration`: 35 passed. `npm run typecheck`: OK. `npm run lint`: OK
+  (0 warnings). `npm run test`: 48 passed.
+- Pendiente: regenerar el `.deb` (`./build-deb.sh`) e instalar en limpio para
+  la prueba empírica de apertura.
+
+## 2026-10-21 (sesión de bugs — EN CURSO)
+
+Auditoría completa (Rust backend + frontend + empaquetado/IPC) con 3 subagentes.
+El propietario autorizó "arregla todo" y "quita el botón amend". Se trabajó por
+áreas; estado de cada una abajo. **Nada está commiteado todavía.**
+
+### Completado en esta sesión
+
+**Empaquetado (bloqueaba el `.deb`)**
+- `src-tauri/tauri.conf.json`: rutas `../packaging/com.foxbuntu.foxen.metainfo.xml`
+  → `io.github.dbahamondesv.foxen.metainfo.xml` en deb/rpm/appimage (el archivo
+  viejo ya no existe; `tauri build` fallaba).
+- `build-flatpak.sh:20`: `MANIFEST` apunta al yaml renombrado.
+- `packaging/io.github.dbahamondesv.foxen.yaml`: fuentes e `install` del
+  metainfo usan el nombre nuevo; URL de release a `dbahamondesv/foxen`; nota de
+  cabecera corregida.
+- `packaging/io.github.dbahamondesv.foxen.metainfo.xml`: `<id>` =
+  `io.github.dbahamondesv.foxen`, `<launchable>` =
+  `com.foxbuntu.foxen.desktop`, developer y URLs a `dbahamondesv`.
+- `packaging/foxen.desktop`: `Exec=foxen %u` (era `%f`, que rompía el handler
+  `x-scheme-handler/git`).
+
+**Staging por hunks (`git/staging.rs`)**
+- `rebuild_patch` ahora emite cabecera `diff --git` (+ `new file mode`/
+  `deleted file mode`); sin ella libgit2 no parseaba el parche y stage/apply
+  siempre fallaba.
+- `apply_raw_patch` recibe `ApplyLocation`: stage → `Index`, unstage/discard →
+  `WorkDir`. Nuevo `apply_discard_patch`. Corrección del sitio de aplicación.
+
+**Commit/amend (`git/commit_ops.rs`, `ChangesPanel.tsx`, `TopBar.tsx`)**
+- Botón **Amend eliminado** de `ChangesPanel` (por pedido del propietario).
+- `ChangesPanel` y `TopBar` pasan `stagedOnly=true` (antes `false` → el backend
+  hacía `add_all(["*"])` y commiteaba TODO, no solo lo staged).
+- Backend: el amend construye siempre el árbol desde el índice; se rechaza
+  enmendar un commit que no sea la punta (evita huérfanos silenciosos).
+
+**Discard/Unstage por hunk (`ChangesPanel.tsx`)**
+- `discardHunk` usa `selectedSide === 'staged'` en vez de `true` fijo.
+- `selectionFor().unstage` = `selectedSide === 'staged'`.
+- El botón "stagear" muestra "quitar del stage" en la vista staged; "descartar"
+  por hunk se oculta en esa vista.
+
+**Push (`git/remote.rs`)**
+- `force` añade prefijo `+` al refspec (antes no forzaba nunca).
+- Conteo real de refs vía callback `push_update_reference`; los rechazos del
+  remoto devuelven error con detalle (antes `updated = specs.len()` y
+  `up_to_date` siempre false).
+
+**Rebase (`git/merge.rs`)**
+- `rebase_continue/skip/abort` reescritos con `open_rebase()` + `Rebase` real:
+  `commit()`, `finish()`, `abort()`. Antes solo movían HEAD y dejaban el estado
+  colgado (HEAD detached, rama sin mover).
+
+**Merge (`git/merge.rs`)**
+- Marcadores de conflicto: `ensure_newline` antes de `=======`/`>>>>>>>`.
+- Fast-forward: rechaza si el working tree tiene cambios (evita pisar locales).
+- Squash: commit con un solo padre (antes se ignoraba `opts.squash`).
+
+**Path traversal (`git/util.rs` + usos)**
+- Nuevo `safe_worktree_path(workdir, path)`: rechaza rutas absolutas y `..`.
+- Aplicado en `staging.rs` (discard, stage, refresh_workdir_file,
+  conflict_markers_in), `commit_ops.rs` (checkout_conflict_side) y
+  `merge.rs` (write_conflict_markers).
+
+### Verificación (esta segunda tanda)
+- `cargo check`: OK.
+- `cargo test --lib`: 9 passed, 1 ignored.
+- `cargo test --test git_integration`: 35 passed.
+- `npm run typecheck`, `npm run lint`: OK.
+- `npm run test`: 48 passed.
+- `cargo clippy --all-targets`: solo 2 warnings preexistentes ("too many
+  arguments").
+
+### PENDIENTE (continuar aquí)
+Solo quedan puntos de severidad baja ya abordados; lista de cierre:
+1. **Verificación final** ya corrida (ver arriba); reusar si se toca algo más.
+2. **Regenerar `.deb`** (`./build-deb.sh`) e instalar en limpio para la prueba.
+3. *(Diferido, sesión anterior)* timeout de red: git2 0.20 no expone API; sin
+   resolver.
+
+### Completado en la segunda tanda (fixes menores de la auditoría)
+- **`graph.rs`**: `truncated` era off-by-one (`total >= limit`); ahora es
+  `true` solo si se alcanzó el tope **con cola pendiente**. `total_reachable`
+  ahora sí es el total real: nuevo `count_reachable()` acotado a `MAX_COMMITS`,
+  invocado solo cuando el grafo queda truncado (antes quedaba capeado en
+  `limit` y la UI mentía en "mostrando X de Y").
+- **`refs.rs`**: `set_upstream(Some(up_name))` con el nombre completo del remoto
+  (ya estaba corregido en la primera tanda).
+- **`repo.rs` `close()`** y **`pty.rs` (writer Arc, `wait()`)** y
+  **`github_auth.rs` (orden de validación, `Ok(None)`)**: ya corregidos.
+- **`App.tsx`**: ambos `useEffect` de listeners capturan `cancelled` y quitan el
+  listener en el acto si la promesa resuelve tras el cleanup (StrictMode).
+- **`GitHubAuthModal.tsx`**: `successTimerRef` guarda el timer de 1.2 s y lo
+  cancela al desmontar; los 3 `setTimeout` de éxito lo usan.
+- **`BranchesPanel.tsx`**: el botón "Refrescar" ahora llama de verdad a
+  `refreshStashes()` (antes solo mostraba un toast); se quitó `notify` sin uso.
+- **`CommitGraph.tsx`**: `useEffect` cancela el rAF pendiente al desmontar.
+- **`tauri.conf.json`**: quitado `theme: "Dark"` fijo (ahora sigue al sistema).
+- **`Cargo.toml`**: eliminadas deps sin uso (`thiserror`, `once_cell`,
+  `tokio-util`, `futures`); `reqwest` con `default-features = false` (evita el
+  doble TLS); `rust-version = "1.90"` (el real del toolchain).
+- **`capabilities/default.json`**: quitados permisos no usados
+  (`core:window:*` que aporta `core:default`, `dialog:allow-message`,
+  `opener:allow-open-path`, `opener:allow-reveal-item-in-dir`).
+
+### Notas de contexto
+- Regla del propietario: esta sesión SÍ está autorizada a escribir código.
+- El fix de red sin timeout (git2 0.20 sin API) sigue pendiente de la sesión
+  anterior.
+- Los fixes "de fondo" del colgado (watcher, convoy de locks, status O(N),
+  refreshAll) están hechos y verificados en la entrada anterior.
