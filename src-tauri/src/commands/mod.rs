@@ -171,6 +171,14 @@ pub async fn settings_save_theme(theme: Option<String>) -> AppResult<()> {
 }
 
 #[tauri::command]
+pub async fn settings_save_locale(locale: Option<String>) -> AppResult<()> {
+    blocking("guardar idioma", move || {
+        crate::settings::save_locale(locale)
+    })
+    .await
+}
+
+#[tauri::command]
 pub async fn list_repositories(state: State<'_, AppState>) -> AppResult<Vec<RepositoryHandle>> {
     Ok(state.list())
 }

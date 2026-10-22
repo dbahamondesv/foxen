@@ -3,6 +3,8 @@ import { open } from '@tauri-apps/plugin-dialog';
 import { useStore, type SidePanel } from '../store/useAppStore';
 import * as ipc from '../lib/ipc';
 import { errorMessage } from '../lib/ipc';
+import { useI18n } from '../lib/useI18n';
+import { HelpButton } from './HelpPanel';
 
 const PANELS: { id: SidePanel; label: string; icon: string }[] = [
   { id: 'changes', label: 'Cambios', icon: '📝' },
@@ -15,6 +17,7 @@ const PANELS: { id: SidePanel; label: string; icon: string }[] = [
 
 /** Selector de repositorio, abre el dialogo nativo del sistema. */
 function RepositoryPicker() {
+  const { t } = useI18n();
   const repositories = useStore((s) => s.repositories);
   const openPath = useStore((s) => s.openPath);
   const notify = useStore((s) => s.notify);
@@ -36,7 +39,7 @@ function RepositoryPicker() {
       const selected = await open({
         directory: true,
         multiple: false,
-        title: 'Abrir repositorio Git',
+        title: t('Abrir repositorio Git'),
       });
       if (typeof selected === 'string') await openPath(selected);
     } catch (error) {
@@ -53,7 +56,7 @@ function RepositoryPicker() {
       {open_ && (
         <div className="repo-menu">
           <button type="button" className="repo-menu-item" onClick={() => void browse()}>
-            Abrir repositorio…
+            {t('Abrir repositorio…')}
           </button>
           <button
             type="button"
@@ -67,11 +70,11 @@ function RepositoryPicker() {
               }
             }}
           >
-            🐙 Clonar desde GitHub…
+            🐙 {t('Clonar desde GitHub…')}
           </button>
           {repositories.length > 0 && (
             <>
-              <div className="repo-menu-sep">Abiertos recientemente</div>
+              <div className="repo-menu-sep">{t('Abiertos recientemente')}</div>
               {repositories.map((repo) => (
                 <button
                   key={repo.id}
@@ -103,7 +106,7 @@ function RepositoryPicker() {
                   }
                 }}
               >
-                🚀 Publicar en GitHub…
+                🚀 {t('Publicar en GitHub…')}
               </button>
             </>
           )}
@@ -115,6 +118,7 @@ function RepositoryPicker() {
 
 /** Barra superior: rama actual, estado y acciones rapidas. */
 export function TopBar() {
+  const { t } = useI18n();
   const repoId = useStore((s) => s.repoId);
   const status = useStore((s) => s.status);
   const run = useStore((s) => s.run);
@@ -156,10 +160,10 @@ export function TopBar() {
     if (!repoId) return;
     const message = commitMessage.trim();
     if (!message) {
-      notify('error', 'El mensaje del commit no puede estar vacio');
+      notify('error', t('El mensaje del commit no puede estar vacio'));
       return;
     }
-    void run('Crear commit', async () => {
+    void run(t('Crear commit'), async () => {
       const result = await ipc.createCommit(repoId, message, false, false, true);
       setCommitMessage('');
       return result;
@@ -172,9 +176,9 @@ export function TopBar() {
         type="button"
         className="icon-button"
         onClick={toggleSidebar}
-        aria-label={sidebarOpen ? 'Ocultar panel lateral' : 'Mostrar panel lateral'}
+        aria-label={sidebarOpen ? t('Ocultar panel lateral') : t('Mostrar panel lateral')}
         aria-expanded={sidebarOpen}
-        title={sidebarOpen ? 'Ocultar panel lateral' : 'Mostrar panel lateral'}
+        title={sidebarOpen ? t('Ocultar panel lateral') : t('Mostrar panel lateral')}
       >
         ☰
       </button>
@@ -183,7 +187,7 @@ export function TopBar() {
 
       {status && (
         <div className="topbar-branch">
-          <strong>{status.headBranch ?? 'HEAD desligado'}</strong>
+          <strong>{status.headBranch ?? t('HEAD desligado')}</strong>
           {status.hasUpstream && (
             <span className="topbar-tracking">
               {status.ahead > 0 && <span className="badge badge-ahead">↑{status.ahead}</span>}
@@ -192,7 +196,9 @@ export function TopBar() {
             </span>
           )}
           {status.conflictedCount > 0 && (
-            <span className="badge badge-conflict">{status.conflictedCount} conflictos</span>
+            <span className="badge badge-conflict">
+              {t('{count} conflictos', { count: status.conflictedCount })}
+            </span>
           )}
         </div>
       )}
@@ -201,7 +207,7 @@ export function TopBar() {
         <input
           type="search"
           className="graph-filter"
-          placeholder="Resaltar commit…"
+          placeholder={t('Resaltar commit…')}
           value={highlight}
           onChange={(e) => setHighlight(e.target.value)}
           disabled={!repoId}
@@ -211,8 +217,8 @@ export function TopBar() {
           className="icon-button"
           onClick={() => void refreshAll()}
           disabled={!repoId || loading}
-          aria-label="Refrescar repositorio"
-          title="Refrescar estado (Ctrl+R / F5)"
+          aria-label={t('Refrescar repositorio')}
+          title={t('Refrescar estado (Ctrl+R / F5)')}
         >
           ⟳
         </button>
@@ -221,7 +227,7 @@ export function TopBar() {
           className="topbar-action-btn"
           onClick={pullCurrent}
           disabled={!repoId || loading || !status?.hasUpstream}
-          title="Descargar cambios e integrarlos en la rama actual (Pull)"
+          title={t('Descargar cambios e integrarlos en la rama actual (Pull)')}
         >
           <span className="btn-icon">⬇</span>
           <span>Pull{status && status.behind > 0 ? ` ↓${status.behind}` : ''}</span>
@@ -231,7 +237,7 @@ export function TopBar() {
           className="topbar-action-btn primary"
           onClick={() => void run('Push', () => pushCurrent())}
           disabled={!repoId || loading || !status?.headBranch}
-          title="Subir la rama actual al remoto (Push)"
+          title={t('Subir la rama actual al remoto (Push)')}
         >
           <span className="btn-icon">⬆</span>
           <span>Push{status && status.ahead > 0 ? ` ↑${status.ahead}` : ''}</span>
@@ -241,7 +247,7 @@ export function TopBar() {
           className="topbar-action-btn"
           onClick={fetchAll}
           disabled={!repoId || loading}
-          title="Consultar cambios en todos los remotos (Fetch)"
+          title={t('Consultar cambios en todos los remotos (Fetch)')}
         >
           <span className="btn-icon">🔄</span>
           <span>Fetch</span>
@@ -251,7 +257,7 @@ export function TopBar() {
           className="topbar-action-btn"
           onClick={commitStaged}
           disabled={!repoId || loading || stagedCount === 0 || !commitMessage.trim()}
-          title="Crear un commit con lo que esta en stage (usa el mensaje del panel Cambios)"
+          title={t('Crear un commit con lo que esta en stage (usa el mensaje del panel Cambios)')}
         >
           Commit
         </button>
@@ -260,7 +266,7 @@ export function TopBar() {
           onClick={toggleTerminal}
           disabled={!repoId}
           aria-pressed={terminalOpen}
-          title="Mostrar u ocultar la terminal del repositorio"
+          title={t('Mostrar u ocultar la terminal del repositorio')}
         >
           Terminal
         </button>
@@ -268,7 +274,7 @@ export function TopBar() {
           <button
             type="button"
             onClick={openGitHubRepos}
-            title={`Conectado como @${githubUser.login}. Ver repositorios de GitHub.`}
+            title={t('Conectado como @{login}. Ver repositorios de GitHub.', { login: githubUser.login })}
             style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '3px 8px' }}
           >
             {githubUser.avatarUrl ? (
@@ -286,7 +292,7 @@ export function TopBar() {
           <button
             type="button"
             onClick={openGitHubLogin}
-            title="Iniciar sesión en GitHub con tu navegador"
+            title={t('Iniciar sesión en GitHub con tu navegador')}
             style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
           >
             <span>🐙</span>
@@ -295,12 +301,13 @@ export function TopBar() {
         )}
         {/* El ajuste vive junto al resto de acciones globales, no en el sidebar,
             porque los ajustes son de la aplicacion y no del repositorio. */}
+        <HelpButton compact />
         <button
           type="button"
           className="icon-button"
           onClick={openSettings}
-          aria-label="Abrir configuracion"
-          title="Configuracion"
+          aria-label={t('Abrir configuracion')}
+          title={t('Configuracion')}
         >
           ⚙
         </button>
@@ -311,6 +318,7 @@ export function TopBar() {
 
 /** Selector de paneles del lateral izquierdo. */
 export function PanelTabs() {
+  const { t } = useI18n();
   const panel = useStore((s) => s.panel);
   const setPanel = useStore((s) => s.setPanel);
   const status = useStore((s) => s.status);
@@ -341,13 +349,13 @@ export function PanelTabs() {
             role="tab"
             aria-selected={panel === id}
             className={`panel-tab${panel === id ? ' is-active' : ''}`}
-            title={label}
+            title={t(label)}
             onClick={() => setPanel(id)}
           >
             <span className="tab-icon" aria-hidden="true">
               {icon}
             </span>
-            <span className="tab-label">{label}</span>
+            <span className="tab-label">{t(label)}</span>
             {badge !== null && <span className="tab-badge">{badge}</span>}
           </button>
         );

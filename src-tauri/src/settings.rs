@@ -24,6 +24,8 @@ pub struct Settings {
     pub session: Session,
     /// `light`, `dark`, `system` o `None` si nunca se ha elegido.
     pub theme: Option<String>,
+    /// `es`, `en` o `None` si nunca se ha elegido.
+    pub locale: Option<String>,
 }
 
 /// Repositorios abiertos y cual estaba activo al cerrar la app.
@@ -96,6 +98,13 @@ pub fn save_theme(theme: Option<String>) -> AppResult<()> {
     save(&settings)
 }
 
+/// Reemplaza solo el idioma, conservando el resto de ajustes.
+pub fn save_locale(locale: Option<String>) -> AppResult<()> {
+    let mut settings = load()?;
+    settings.locale = locale;
+    save(&settings)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -108,10 +117,12 @@ mod tests {
                 active: Some("/a".to_string()),
             },
             theme: Some("dark".to_string()),
+            locale: Some("en".to_string()),
         };
         let json = serde_json::to_string(&settings).unwrap();
         assert!(json.contains("\"active\""));
         assert!(json.contains("\"theme\":\"dark\""));
+        assert!(json.contains("\"locale\":\"en\""));
     }
 
     #[test]
@@ -120,5 +131,6 @@ mod tests {
         assert!(settings.session.paths.is_empty());
         assert!(settings.session.active.is_none());
         assert!(settings.theme.is_none());
+        assert!(settings.locale.is_none());
     }
 }

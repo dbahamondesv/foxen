@@ -716,3 +716,41 @@ Solo quedan puntos de severidad baja ya abordados; lista de cierre:
   anterior.
 - Los fixes "de fondo" del colgado (watcher, convoy de locks, status O(N),
   refreshAll) están hechos y verificados en la entrada anterior.
+
+## 2026-10-22 (i18n + manual)
+
+**Objetivo:** añadir inglés en Configuración y una ayuda/manual bilingüe usable
+sin conexión.
+
+**Arquitectura i18n**
+- Español como texto fuente/clave; diccionario `EN` en `src/lib/i18n.ts`
+  (`translate(texto, vars, locale)`, fallback a español si falta una clave).
+- Idioma por defecto `es`, sin autodetección. Hook `useI18n` suscrito al store.
+- Persistencia doble: `settings.json` vía nuevo comando `settings_save_locale`
+  (Rust) y cache `localStorage["foxen.locale"]` para el primer pintado.
+- Los mensajes de error del backend siguen en español; solo se traduce la UI.
+- Fechas relativas: `relativeTime(unix, locale)` con etiquetas `now`/`5m ago`.
+
+**Manual**
+- `src/lib/help.ts`: 12 secciones bilingües (`intro`, `repos`, `graph`,
+  `changes`, `branches`, `stashes`, `remotes`, `flow`, `terminal`, `settings`,
+  `shortcuts`, `troubleshooting`).
+- `HelpPanel` modal con buscador, navegación, atajos `F1`/`?` y `Escape`.
+  Accesible desde barra superior, Configuración, Merge y bienvenida.
+- Pantalla de bienvenida con primeros pasos y acceso al manual.
+
+**Corrección funcional**
+- Hint de squash en `MergeModal`: ahora explica que crea un commit único y no
+  fusiona el historial, igual que el backend.
+
+**Verificación**
+- `npx tsc --noEmit`: OK.
+- `npm run lint`: OK.
+- `npm test -- --run`: 81 passed (nuevos tests de i18n y relativeTime EN).
+- `npm run build`: OK.
+- `cargo test`: 42 integration tests passed.
+
+**Pendiente**
+- Traducción de nuevos textos futuros: el diccionario es manual.
+- Flathub: capturas RGB 16:9, copyright/changelog, manifiesto con URL+sha256,
+  repo público y release `.deb`.

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useStore } from '../store/useAppStore';
 import * as ipc from '../lib/ipc';
+import { useI18n } from '../lib/useI18n';
 
 /**
  * Dialogo que se ofrece tras fusionar una rama hacia la principal: propone
@@ -8,6 +9,7 @@ import * as ipc from '../lib/ipc';
  * sugerida a partir de los tags existentes.
  */
 export function CreateTagModal() {
+  const { t } = useI18n();
   const prompt = useStore((s) => s.tagPrompt);
   const close = useStore((s) => s.closeTagPrompt);
   const run = useStore((s) => s.run);
@@ -41,7 +43,7 @@ export function CreateTagModal() {
 
   const create = () => {
     if (!valid) return;
-    void run(`Crear tag ${trimmed}`, async () => {
+    void run(t('Crear tag {tag}', { tag: trimmed }), async () => {
       const result = await ipc.createTag(
         repoId,
         trimmed,
@@ -60,29 +62,29 @@ export function CreateTagModal() {
         className="modal"
         role="dialog"
         aria-modal="true"
-        aria-label="Crear etiqueta de version"
+        aria-label={t('Crear etiqueta de version')}
         tabIndex={-1}
         ref={dialogRef}
         onClick={(e) => e.stopPropagation()}
       >
         <header className="modal-header">
-          <h2>Crear etiqueta</h2>
+          <h2>{t('Crear etiqueta')}</h2>
         </header>
 
         <div className="modal-body">
           <p className="hint">
-            Se fusionó hacia <strong>{prompt.branch}</strong>. Puedes marcar una
-            versión en ese punto del historial.
+            {t('Se fusionó hacia')} <strong>{prompt.branch}</strong>.{' '}
+            {t('Puedes marcar una versión en ese punto del historial.')}
             {prompt.latest && (
               <>
                 {' '}
-                Última versión detectada: <strong>{prompt.latest}</strong>.
+                {t('Última versión detectada:')} <strong>{prompt.latest}</strong>.
               </>
             )}
           </p>
 
           <label className="field">
-            <span>Nombre del tag</span>
+            <span>{t('Nombre del tag')}</span>
             <input
               type="text"
               value={name}
@@ -93,7 +95,7 @@ export function CreateTagModal() {
           </label>
 
           <label className="field">
-            <span>Mensaje (tag anotado)</span>
+            <span>{t('Mensaje (tag anotado)')}</span>
             <input
               type="text"
               value={message}
@@ -103,14 +105,14 @@ export function CreateTagModal() {
           </label>
 
           <p className="hint">
-            Si dejas el mensaje vacío se creará un tag ligero. El tag apunta al
-            commit actual de <strong>{prompt.branch}</strong>.
+            {t('Si dejas el mensaje vacío se creará un tag ligero. El tag apunta al commit actual de')}{' '}
+            <strong>{prompt.branch}</strong>.
           </p>
         </div>
 
         <footer className="modal-footer">
           <button type="button" onClick={close} disabled={loading}>
-            Ahora no
+            {t('Ahora no')}
           </button>
           <button
             type="button"
@@ -118,7 +120,7 @@ export function CreateTagModal() {
             onClick={create}
             disabled={loading || !valid}
           >
-            Crear tag
+            {t('Crear tag')}
           </button>
         </footer>
       </div>

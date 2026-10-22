@@ -71,6 +71,7 @@ pub fn run() {
             commands::settings_load,
             commands::settings_save_session,
             commands::settings_save_theme,
+            commands::settings_save_locale,
             commands::list_repositories,
             commands::recent_repositories,
             commands::scan_for_repositories,

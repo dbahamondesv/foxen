@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useStore } from '../store/useAppStore';
 import { isMainBranch } from '../lib/tags';
 import * as ipc from '../lib/ipc';
+import { useI18n } from '../lib/useI18n';
+import { HelpButton } from './HelpPanel';
 
 type Strategy = 'auto' | 'no-ff' | 'ff-only' | 'squash';
 
@@ -40,7 +42,7 @@ const STRATEGIES: { id: Strategy; label: string; hint: string }[] = [
   {
     id: 'squash',
     label: 'Squash',
-    hint: 'Trae los cambios sin fusionar el historial; requiere commit despues.',
+    hint: 'Con squash se crea un commit único con todos los cambios; el historial de la rama no se fusiona.',
   },
 ];
 
@@ -51,6 +53,7 @@ const STRATEGIES: { id: Strategy; label: string; hint: string }[] = [
  * hacer `feature/x -> develop` sin cambiar de rama a mano.
  */
 export function MergeModal() {
+  const { t } = useI18n();
   const source = useStore((s) => s.mergeTarget);
   const close = useStore((s) => s.closeMerge);
   const run = useStore((s) => s.run);
@@ -74,9 +77,9 @@ export function MergeModal() {
     if (source) {
       setDestination(current ?? '');
       setStrategy('auto');
-      setMessage(`Merge de ${source}`);
+      setMessage(t('Merge de {branch}', { branch: source }));
     }
-  }, [source, current]);
+  }, [source, current, t]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -94,7 +97,7 @@ export function MergeModal() {
 
   const merge = () => {
     if (!valid) return;
-    void run(`Fusionar ${source} en ${destination}`, async () => {
+    void run(t('Fusionar {source} en {destination}', { source, destination }), async () => {
       const result = await ipc.mergeInto(
         repoId,
         source,
@@ -119,32 +122,33 @@ export function MergeModal() {
         className="modal"
         role="dialog"
         aria-modal="true"
-        aria-label={`Fusionar ${source}`}
+        aria-label={t('Fusionar {branch}', { branch: source })}
         tabIndex={-1}
         ref={dialogRef}
         onClick={(e) => e.stopPropagation()}
       >
         <header className="modal-header">
-          <h2>Fusionar ramas</h2>
+          <h2>{t('Fusionar ramas')}</h2>
+          <HelpButton section="branches" label={t('¿Cómo funciona?')} />
         </header>
 
         <div className="modal-body">
           <div className="merge-branches">
             <label className="field">
-              <span>Rama a fusionar</span>
+              <span>{t('Rama a fusionar')}</span>
               <input type="text" value={source} readOnly />
             </label>
             <span className="merge-arrow" aria-hidden="true">
               →
             </span>
             <label className="field">
-              <span>Rama destino</span>
+              <span>{t('Rama destino')}</span>
               <select
                 value={destination}
                 onChange={(e) => setDestination(e.target.value)}
                 autoFocus
               >
-                {current && <option value={current}>{current} (actual)</option>}
+                {current && <option value={current}>{current} ({t('actual')})</option>}
                 {locals
                   .filter((name) => name !== current)
                   .map((name) => (
@@ -158,12 +162,12 @@ export function MergeModal() {
 
           {switchesBranch && (
             <p className="hint">
-              Se cambiará a <strong>{destination}</strong> para hacer la fusión y
-              quedarás en esa rama.
+              {t('Se cambiará a')} <strong>{destination}</strong>{' '}
+              {t('para hacer la fusión y quedarás en esa rama.')}
             </p>
           )}
           {destination === source && (
-            <p className="alert alert-error">No se puede fusionar una rama consigo misma.</p>
+            <p className="alert alert-error">{t('No se puede fusionar una rama consigo misma.')}</p>
           )}
 
           <fieldset className="merge-strategies">
@@ -176,8 +180,8 @@ export function MergeModal() {
                   onChange={() => setStrategy(option.id)}
                 />
                 <span>
-                  <strong>{option.label}</strong>
-                  <small>{option.hint}</small>
+                  <strong>{t(option.label)}</strong>
+                  <small>{t(option.hint)}</small>
                 </span>
               </label>
             ))}
@@ -185,27 +189,26 @@ export function MergeModal() {
 
           {strategy !== 'ff-only' && (
             <label className="field">
-              <span>Mensaje del merge</span>
+              <span>{t('Mensaje del merge')}</span>
               <input
                 type="text"
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
-                placeholder={`Merge de ${source}`}
+                placeholder={t('Merge de {branch}', { branch: source })}
               />
             </label>
           )}
 
           {strategy === 'squash' && (
             <p className="hint">
-              Con squash los cambios quedan en el indice sin commit: crea el commit
-              desde el panel Cambios.
+              {t('Con squash se crea un commit único con todos los cambios; el historial de la rama no se fusiona.')}
             </p>
           )}
         </div>
 
         <footer className="modal-footer">
           <button type="button" onClick={close} disabled={loading}>
-            Cancelar
+            {t('Cancelar')}
           </button>
           <button
             type="button"
@@ -213,7 +216,7 @@ export function MergeModal() {
             onClick={merge}
             disabled={loading || !valid}
           >
-            Fusionar
+            {t('Fusionar')}
           </button>
         </footer>
       </div>

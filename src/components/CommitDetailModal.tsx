@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useStore } from '../store/useAppStore';
 import { CommitDetailView } from './CommitDetail';
 import { DiffPanel } from './ChangesPanel';
+import { useI18n } from '../lib/useI18n';
 
 /**
  * Detalle del commit en un popup.
@@ -11,6 +12,7 @@ import { DiffPanel } from './ChangesPanel';
  * Los archivos del commit se abren dentro del mismo popup.
  */
 export function CommitDetailModal() {
+  const { t } = useI18n();
   const selectedOid = useStore((s) => s.selectedOid);
   const detail = useStore((s) => s.selectedDetail);
   const selectedFile = useStore((s) => s.selectedFile);
@@ -59,19 +61,19 @@ export function CommitDetailModal() {
       >
         <header className="modal-header">
           <h2 id="detail-modal-title">
-            {fileView ? 'Archivo del commit' : 'Detalle del commit'}
+            {fileView ? t('Archivo del commit') : t('Detalle del commit')}
           </h2>
           <div className="detail-modal-actions">
             {fileView && (
               <button type="button" className="detail-back" onClick={() => setShowFile(false)}>
-                ← Volver
+                ← {t('Volver')}
               </button>
             )}
             <button
               type="button"
               className="icon-button"
               onClick={closeDetail}
-              aria-label="Cerrar detalle del commit"
+              aria-label={t('Cerrar detalle del commit')}
             >
               ×
             </button>
@@ -80,12 +82,12 @@ export function CommitDetailModal() {
 
         <div className="detail-modal-body">
           {!detail ? (
-            <p className="empty">Cargando detalle…</p>
+            <p className="empty">{t('Cargando detalle…')}</p>
           ) : fileView ? (
             diffReady ? (
               <DiffPanel />
             ) : (
-              <p className="empty">Cargando diff…</p>
+              <p className="empty">{t('Cargando diff…')}</p>
             )
           ) : (
             <CommitDetailView onFileOpen={() => setShowFile(true)} />

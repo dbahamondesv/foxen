@@ -163,6 +163,17 @@ describe('relativeTime', () => {
     // Tiempos futuros: no debería producir «hace -5m».
     expect(relativeTime(now + 600)).toBe('ahora');
   });
+
+  it('traduce las etiquetas cuando se pide inglés', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-01-10T12:00:00Z'));
+    const now = Math.floor(Date.now() / 1000);
+
+    expect(relativeTime(now, 'en')).toBe('now');
+    expect(relativeTime(now - 60 * 5, 'en')).toBe('5m ago');
+    expect(relativeTime(now - 60 * 60 * 3, 'en')).toBe('3h ago');
+    expect(relativeTime(now - 60 * 60 * 24 * 2, 'en')).toBe('2d ago');
+  });
 });
 
 describe('truncateMiddle', () => {

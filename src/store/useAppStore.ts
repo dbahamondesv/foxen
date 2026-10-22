@@ -5,6 +5,14 @@ import * as ipc from '../lib/ipc';
 import { errorMessage } from '../lib/ipc';
 import { applyTheme, loadStoredTheme, loadTheme, saveTheme, type Theme } from '../lib/theme';
 import {
+  applyLocale,
+  loadLocale,
+  loadStoredLocale,
+  saveLocale,
+  translate,
+  type Locale,
+} from '../lib/i18n';
+import {
   clampColumnWidth,
   loadColumnWidths,
   saveColumnWidths,
@@ -70,7 +78,12 @@ interface FoxenState {
   theme: Theme;
   /** Tema ya resuelto, para componentes que no pueden usar CSS. */
   resolvedTheme: 'light' | 'dark';
+  /** Idioma de la interfaz (`es` o `en`). */
+  locale: Locale;
   settingsOpen: boolean;
+  /** Manual de ayuda abierto y seccion activa. */
+  helpOpen: boolean;
+  helpSection: string;
   /** Terminal embebida visible en la parte inferior. */
   terminalOpen: boolean;
   /** Panel lateral izquierdo visible. */
@@ -163,13 +176,19 @@ interface FoxenState {
 
   setPanel: (panel: SidePanel) => void;
   setTheme: (theme: Theme) => void;
+  setLocale: (locale: Locale) => void;
   openSettings: () => void;
   closeSettings: () => void;
+  openHelp: (section?: string) => void;
+  closeHelp: () => void;
+  setHelpSection: (section: string) => void;
   toggleTerminal: () => void;
   toggleSidebar: () => void;
   syncSystemTheme: () => void;
   /** Carga el tema persistido en Rust (confirma la cache del primer pintado). */
   hydrateTheme: () => Promise<void>;
+  /** Carga el idioma persistido en Rust (confirma la cache del primer pintado). */
+  hydrateLocale: () => Promise<void>;
   setCommitMessage: (message: string) => void;
   setGraphHighlight: (value: string) => void;
   setGraphZoom: (zoom: number) => void;
@@ -242,7 +261,10 @@ export const useStore = create<FoxenState>((set, get) => ({
   panel: 'changes',
   theme: loadTheme(),
   resolvedTheme: applyTheme(loadTheme()),
+  locale: loadLocale(),
   settingsOpen: false,
+  helpOpen: false,
+  helpSection: 'intro',
   terminalOpen: false,
   sidebarOpen: true,
   loading: false,
@@ -333,7 +355,10 @@ export const useStore = create<FoxenState>((set, get) => ({
       rememberOpen(handle.path);
       await get().refreshRepositories();
       await get().refreshAll();
-      get().notify('success', `Repositorio abierto: ${handle.name}`);
+      get().notify(
+        'success',
+        translate('Repositorio abierto: {name}', { name: handle.name }, get().locale),
+      );
     } catch (error) {
       get().notify('error', errorMessage(error));
     } finally {
@@ -357,7 +382,10 @@ export const useStore = create<FoxenState>((set, get) => ({
       rememberOpen(handle.path);
       await get().refreshRepositories();
       await get().refreshAll();
-      get().notify('success', `Repositorio clonado y abierto: ${handle.name}`);
+      get().notify(
+        'success',
+        translate('Repositorio clonado y abierto: {name}', { name: handle.name }, get().locale),
+      );
     } catch (error) {
       get().notify('error', errorMessage(error));
     } finally {
@@ -399,7 +427,7 @@ export const useStore = create<FoxenState>((set, get) => ({
     try {
       await ipc.githubLogout();
       set({ githubUser: null, githubRepos: [], githubReposOpen: false });
-      get().notify('info', 'Sesión de GitHub cerrada');
+      get().notify('info', translate('Sesión de GitHub cerrada', undefined, get().locale));
     } catch (error) {
       get().notify('error', errorMessage(error));
     }
@@ -430,7 +458,10 @@ export const useStore = create<FoxenState>((set, get) => ({
       );
       await get().refreshRepositories();
       await get().refreshAll();
-      get().notify('success', `Publicado en GitHub: ${repo.fullName}`);
+      get().notify(
+        'success',
+        translate('Publicado en GitHub: {name}', { name: repo.fullName }, get().locale),
+      );
       return repo;
     } catch (error) {
       get().notify('error', errorMessage(error));
@@ -720,8 +751,17 @@ export const useStore = create<FoxenState>((set, get) => ({
     set({ theme, resolvedTheme: applyTheme(theme) });
   },
 
+  setLocale: (locale) => {
+    saveLocale(locale);
+    applyLocale(locale);
+    set({ locale });
+  },
+
   openSettings: () => set({ settingsOpen: true }),
   closeSettings: () => set({ settingsOpen: false }),
+  openHelp: (section = 'intro') => set({ helpOpen: true, helpSection: section }),
+  closeHelp: () => set({ helpOpen: false }),
+  setHelpSection: (helpSection) => set({ helpSection }),
   toggleTerminal: () => set({ terminalOpen: !get().terminalOpen }),
   toggleSidebar: () => set({ sidebarOpen: !get().sidebarOpen }),
 
@@ -735,6 +775,16 @@ export const useStore = create<FoxenState>((set, get) => ({
     const theme = await loadStoredTheme();
     if (!theme || theme === get().theme) return;
     set({ theme, resolvedTheme: applyTheme(theme) });
+  },
+
+  hydrateLocale: async () => {
+    const locale = await loadStoredLocale();
+    if (!locale || locale === get().locale) {
+      applyLocale(get().locale);
+      return;
+    }
+    applyLocale(locale);
+    set({ locale });
   },
 
   setCommitMessage: (commitMessage) => set({ commitMessage }),
@@ -772,7 +822,10 @@ export const useStore = create<FoxenState>((set, get) => ({
         result && typeof result === 'object' && 'message' in result
           ? String((result as { message: unknown }).message)
           : '';
-      get().notify('success', message || `${label}: correcto`);
+      get().notify(
+        'success',
+        message || `${label}: ${translate('correcto', undefined, get().locale)}`,
+      );
       return true;
     } catch (error) {
       get().notify('error', `${label}: ${errorMessage(error)}`);

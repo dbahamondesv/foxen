@@ -570,6 +570,7 @@ export interface StoredSession {
 export interface StoredSettings {
   session: StoredSession;
   theme: string | null;
+  locale: string | null;
 }
 
 export const settingsLoad = () => call<StoredSettings>('settings_load');
@@ -579,3 +580,6 @@ export const settingsSaveSession = (session: StoredSession) =>
 
 export const settingsSaveTheme = (theme: string) =>
   call<void>('settings_save_theme', { theme });
+
+export const settingsSaveLocale = (locale: string) =>
+  call<void>('settings_save_locale', { locale });

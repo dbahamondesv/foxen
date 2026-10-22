@@ -12,6 +12,7 @@ import {
   LANE_COLOR_COUNT,
   type CommitKind,
 } from '../lib/format';
+import { useI18n } from '../lib/useI18n';
 import type { CommitNode, GraphEdge, RefLabel } from '../lib/types';
 
 /* Geometria base: filas amplias y grafo compacto (como GitFiend). El zoom
@@ -141,6 +142,7 @@ function placeTip(el: HTMLElement, x: number, y: number) {
 }
 
 export function CommitGraphView({ nodes, edges, laneCount, truncated, totalReachable }: Props) {
+  const { locale, t } = useI18n();
   const selectedOid = useStore((s) => s.selectedOid);
   const selectCommit = useStore((s) => s.selectCommit);
   const openDetail = useStore((s) => s.openDetail);
@@ -797,13 +799,13 @@ export function CommitGraphView({ nodes, edges, laneCount, truncated, totalReach
       onPointerCancel={onPointerUp}
     >
       {nodes.length === 0 ? (
-        <p className="empty">Sin commits que mostrar.</p>
+        <p className="empty">{t('Sin commits que mostrar.')}</p>
       ) : (
         <>
           <div className="graph-body" ref={bodyRef}>
             <div
               className="graph-canvas-wrap"
-              title="Ctrl/Cmd + rueda para hacer zoom"
+              title={t('Ctrl/Cmd + rueda para hacer zoom')}
               onMouseMove={onStripMove}
               onMouseLeave={leaveRow}
               onClick={onStripClick}
@@ -812,7 +814,7 @@ export function CommitGraphView({ nodes, edges, laneCount, truncated, totalReach
                 ref={baseRef}
                 className="graph-canvas"
                 role="img"
-                aria-label="Grafo de commits"
+                aria-label={t('Grafo de commits')}
               />
             </div>
 
@@ -838,7 +840,10 @@ export function CommitGraphView({ nodes, edges, laneCount, truncated, totalReach
                     onMouseLeave={leaveRow}
                     role="button"
                     tabIndex={0}
-                    aria-label={`${node.subject}, commit de ${node.authorName}`}
+                    aria-label={t('{subject}, commit de {author}', {
+                      subject: node.subject,
+                      author: node.authorName,
+                    })}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' || e.key === ' ') {
                         e.preventDefault();
@@ -861,7 +866,7 @@ export function CommitGraphView({ nodes, edges, laneCount, truncated, totalReach
                               className={`ref-pill ref-${label.kind}${isHead ? ' is-head' : ''}${
                                 filterActive ? ' is-filter' : ''
                               }`}
-                              title={`${label.fullName} — clic para filtrar`}
+                              title={t('{ref} — clic para filtrar', { ref: label.fullName })}
                               aria-pressed={filterActive}
                               onClick={(e) => onLabelClick(e, label)}
                             >
@@ -899,15 +904,18 @@ export function CommitGraphView({ nodes, edges, laneCount, truncated, totalReach
 
                     <span className="graph-meta">
                       <span className="graph-time" title={node.authorTimeIso}>
-                        {relativeTime(node.authorTime)}
+                        {relativeTime(node.authorTime, locale)}
                       </span>
                       <span
                         className="graph-shortsha"
-                        title={`SHA: ${node.oid} (clic para copiar)`}
+                        title={t('SHA: {sha} (clic para copiar)', { sha: node.oid })}
                         onClick={(e) => {
                           e.stopPropagation();
                           void navigator.clipboard.writeText(node.oid);
-                          notify('info', `SHA ${node.shortOid} copiado al portapapeles`);
+                          notify(
+                            'info',
+                            t('SHA {sha} copiado al portapapeles', { sha: node.shortOid }),
+                          );
                         }}
                       >
                         {node.shortOid}
@@ -917,8 +925,8 @@ export function CommitGraphView({ nodes, edges, laneCount, truncated, totalReach
                     <button
                       type="button"
                       className="graph-detail-btn"
-                      title="Ver detalle del commit"
-                      aria-label={`Ver detalle de ${node.subject}`}
+                      title={t('Ver detalle del commit')}
+                      aria-label={t('Ver detalle de {subject}', { subject: node.subject })}
                       onClick={(e) => {
                         e.stopPropagation();
                         if (pannedRef.current) return;
@@ -936,7 +944,10 @@ export function CommitGraphView({ nodes, edges, laneCount, truncated, totalReach
 
           {truncated && (
             <p className="graph-truncated">
-              Mostrando {nodes.length} de {totalReachable} commits alcanzables.
+              {t('Mostrando {shown} de {total} commits alcanzables.', {
+                shown: nodes.length,
+                total: totalReachable,
+              })}
             </p>
           )}
         </>

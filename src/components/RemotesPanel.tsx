@@ -3,10 +3,12 @@ import { useStore } from '../store/useAppStore';
 import * as ipc from '../lib/ipc';
 import { relativeTime } from '../lib/format';
 import { CredentialsForm } from './CredentialsForm';
+import { useI18n } from '../lib/useI18n';
 import type { Credential, CredentialStatus } from '../lib/types';
 
 /** Panel de remotos: fetch/pull/push y gestion de credenciales. */
 export function RemotesPanel() {
+  const { t } = useI18n();
   const repoId = useStore((s) => s.repoId);
   const remotes = useStore((s) => s.remotes);
   const run = useStore((s) => s.run);
@@ -48,16 +50,16 @@ export function RemotesPanel() {
     };
   }, [remotes]);
 
-  if (!repoId) return <p className="empty">Sin repositorio abierto.</p>;
+  if (!repoId) return <p className="empty">{t('Sin repositorio abierto.')}</p>;
 
   const add = () => {
     const name = newName.trim();
     const url = newUrl.trim();
     if (!name || !url) {
-      notify('error', 'El remoto necesita nombre y URL');
+      notify('error', t('El remoto necesita nombre y URL'));
       return;
     }
-    void run(`Anadir remoto ${name}`, async () => {
+    void run(t('Anadir remoto {name}', { name }), async () => {
       const remote = await ipc.addRemote(repoId, name, url, null, false);
       setNewName('origin');
       setNewUrl('');
@@ -77,9 +79,9 @@ export function RemotesPanel() {
     if (!remote?.url.startsWith('http')) return { cancelled: false, credential: null };
     if (statuses[remoteName]?.saved) return { cancelled: false, credential: null };
 
-    const nextUser = window.prompt(`Usuario para ${remoteName}`, user || 'git');
+    const nextUser = window.prompt(t('Usuario para {remote}', { remote: remoteName }), user || 'git');
     if (nextUser === null) return { cancelled: true, credential: null };
-    const nextPass = window.prompt('Contrasena o token', pass);
+    const nextPass = window.prompt(t('Contrasena o token'), pass);
     if (nextPass === null) return { cancelled: true, credential: null };
 
     setUser(nextUser);
@@ -103,7 +105,7 @@ export function RemotesPanel() {
       <div className="field-row">
         <input
           type="text"
-          placeholder="nombre"
+          placeholder={t('nombre')}
           value={newName}
           onChange={(e) => setNewName(e.target.value)}
           style={{ width: 90 }}
@@ -118,14 +120,14 @@ export function RemotesPanel() {
           }}
         />
         <button type="button" className="primary" onClick={add}>
-          Anadir
+          {t('Anadir')}
         </button>
       </div>
 
-      <h3>Remotos ({remotes.length})</h3>
+      <h3>{t('Remotos')} ({remotes.length})</h3>
       {remotes.length === 0 ? (
         <>
-          <p className="empty">Este repositorio no tiene remotos.</p>
+          <p className="empty">{t('Este repositorio no tiene remotos.')}</p>
           <div style={{ margin: '16px 0' }}>
             <button
               type="button"
@@ -138,7 +140,7 @@ export function RemotesPanel() {
                 }
               }}
             >
-              🚀 Publicar en GitHub…
+              🚀 {t('Publicar en GitHub…')}
             </button>
           </div>
         </>
@@ -159,7 +161,7 @@ export function RemotesPanel() {
                   type="button"
                   className="link"
                   onClick={() =>
-                    runRemote(remote.name, `Fetch de ${remote.name}`, (cred) =>
+                    runRemote(remote.name, t('Fetch de {remote}', { remote: remote.name }), (cred) =>
                       ipc.fetchRemote(repoId, remote.name, true, cred),
                     )
                   }
@@ -170,7 +172,7 @@ export function RemotesPanel() {
                   type="button"
                   className="link"
                   onClick={() =>
-                    runRemote(remote.name, `Pull de ${remote.name}`, (cred) =>
+                    runRemote(remote.name, t('Pull de {remote}', { remote: remote.name }), (cred) =>
                       ipc.pullRemote(repoId, remote.name, null, false, true, cred),
                     )
                   }
@@ -181,7 +183,7 @@ export function RemotesPanel() {
                   type="button"
                   className="link"
                   onClick={() =>
-                    runRemote(remote.name, `Push a ${remote.name}`, (cred) =>
+                    runRemote(remote.name, t('Push a {remote}', { remote: remote.name }), (cred) =>
                       ipc.pushRemote(repoId, remote.name, null, false, false, false, cred),
                     )
                   }
@@ -192,7 +194,7 @@ export function RemotesPanel() {
                   type="button"
                   className="link"
                   onClick={() =>
-                    runRemote(remote.name, `Probar ${remote.name}`, (cred) =>
+                    runRemote(remote.name, t('Probar {remote}', { remote: remote.name }), (cred) =>
                       ipc.testRemote(repoId, remote.name, cred),
                     )
                   }
@@ -203,11 +205,12 @@ export function RemotesPanel() {
                   type="button"
                   className="link danger"
                   onClick={() => {
-                    if (!window.confirm(`¿Eliminar el remoto ${remote.name}?`)) return;
-                    void run('Eliminar remoto', () => ipc.removeRemote(repoId, remote.name));
+                    if (!window.confirm(t('¿Eliminar el remoto {remote}?', { remote: remote.name })))
+                      return;
+                    void run(t('Eliminar remoto'), () => ipc.removeRemote(repoId, remote.name));
                   }}
                 >
-                  borrar
+                  {t('borrar')}
                 </button>
               </div>
 
@@ -225,11 +228,7 @@ export function RemotesPanel() {
       )}
 
       <p className="hint">
-        Para remotos SSH las claves se resuelven con <code>ssh-agent</code>; en Flatpak usa el
-        permiso <code>--socket=ssh-auth</code>. Para HTTPS, guarda aqui usuario y contrasena o
-        token: se guardan en el llavero del sistema (por host, asi valen para todos los
-        repositorios) y despues no hace falta volver a teclearlos. La contrasena nunca se guarda
-        en Foxen.
+        {t('Para remotos SSH las claves se resuelven con ssh-agent; en Flatpak usa el permiso --socket=ssh-auth. Para HTTPS, guarda aquí usuario y contraseña o token: se guardan en el llavero del sistema (por host, así valen para todos los repositorios) y después no hace falta volver a teclearlos. La contraseña nunca se guarda en Foxen.')}
       </p>
     </div>
   );
@@ -237,6 +236,7 @@ export function RemotesPanel() {
 
 /** Panel de Git Flow. */
 export function FlowPanel() {
+  const { t } = useI18n();
   const repoId = useStore((s) => s.repoId);
   const flow = useStore((s) => s.flow);
   const run = useStore((s) => s.run);
@@ -244,12 +244,12 @@ export function FlowPanel() {
   const [name, setName] = useState('');
   const [version, setVersion] = useState('1.0.0');
 
-  if (!repoId || !flow) return <p className="empty">Git Flow no disponible.</p>;
+  if (!repoId || !flow) return <p className="empty">{t('Git Flow no disponible.')}</p>;
 
   const { config } = flow;
 
   const init = () =>
-    void run('Inicializar Git Flow', () =>
+    void run(t('Inicializar Git Flow'), () =>
       ipc.flowInit(repoId, {
         enabled: true,
         mainBranch: 'main',
@@ -263,7 +263,7 @@ export function FlowPanel() {
   const startFeature = () => {
     const value = name.trim();
     if (!value) return;
-    void run('Iniciar feature', async () => {
+    void run(t('Iniciar feature'), async () => {
       const result = await ipc.flowFeatureStart(repoId, value, true);
       setName('');
       return result;
@@ -277,7 +277,7 @@ export function FlowPanel() {
         : kind === 'release'
           ? ipc.flowReleaseFinish(repoId, branch)
           : ipc.flowHotfixFinish(repoId, branch);
-    void run(`Finalizar ${kind} ${branch}`, () => action);
+    void run(t('Finalizar {kind} {branch}', { kind, branch }), () => action);
   };
 
   const withoutPrefix = (branch: string, prefix: string) =>
@@ -287,9 +287,9 @@ export function FlowPanel() {
     <div className="panel-body flow">
       {!flow.initialized ? (
         <>
-          <p className="empty">Git Flow no esta inicializado en este repositorio.</p>
+          <p className="empty">{t('Git Flow no esta inicializado en este repositorio.')}</p>
           <button type="button" className="primary" onClick={init}>
-            Inicializar Git Flow
+            {t('Inicializar Git Flow')}
           </button>
         </>
       ) : (
@@ -299,7 +299,7 @@ export function FlowPanel() {
             <dd>{config.mainBranch}</dd>
             <dt>develop</dt>
             <dd>{config.developBranch}</dd>
-            <dt>actual</dt>
+            <dt>{t('actual')}</dt>
             <dd>
               {flow.currentBranch ?? '—'} <em>({flow.currentType})</em>
             </dd>
@@ -308,7 +308,7 @@ export function FlowPanel() {
           <div className="field-row">
             <input
               type="text"
-              placeholder="nombre de la feature"
+              placeholder={t('nombre de la feature')}
               value={name}
               onChange={(e) => setName(e.target.value)}
               onKeyDown={(e) => {
@@ -316,36 +316,38 @@ export function FlowPanel() {
               }}
             />
             <button type="button" className="primary" onClick={startFeature}>
-              Nueva feature
+              {t('Nueva feature')}
             </button>
           </div>
 
           <div className="field-row">
             <input
               type="text"
-              placeholder="version de la release"
+              placeholder={t('version de la release')}
               value={version}
               onChange={(e) => setVersion(e.target.value)}
             />
             <button
               type="button"
-              onClick={() => void run('Iniciar release', () => ipc.flowReleaseStart(repoId, version, true))}
+              onClick={() =>
+                void run(t('Iniciar release'), () => ipc.flowReleaseStart(repoId, version, true))
+              }
             >
-              Release {version}
+              {t('Release')} {version}
             </button>
             <button
               type="button"
               onClick={() =>
-                void run('Iniciar hotfix', () => ipc.flowHotfixStart(repoId, version, true))
+                void run(t('Iniciar hotfix'), () => ipc.flowHotfixStart(repoId, version, true))
               }
             >
-              Hotfix {version}
+              {t('Hotfix')} {version}
             </button>
           </div>
 
           {flow.activeFeatures.length > 0 && (
             <>
-              <h3>Features activas</h3>
+              <h3>{t('Features activas')}</h3>
               <ul className="flow-list">
                 {flow.activeFeatures.map((b) => (
                   <li key={b}>
@@ -355,7 +357,7 @@ export function FlowPanel() {
                       className="link"
                       onClick={() => finish('feature', withoutPrefix(b, config.featurePrefix))}
                     >
-                      finalizar
+                      {t('finalizar')}
                     </button>
                   </li>
                 ))}
@@ -365,7 +367,7 @@ export function FlowPanel() {
 
           {flow.activeReleases.length > 0 && (
             <>
-              <h3>Releases activas</h3>
+              <h3>{t('Releases activas')}</h3>
               <ul className="flow-list">
                 {flow.activeReleases.map((b) => (
                   <li key={b}>
@@ -375,7 +377,7 @@ export function FlowPanel() {
                       className="link"
                       onClick={() => finish('release', withoutPrefix(b, config.releasePrefix))}
                     >
-                      finalizar
+                      {t('finalizar')}
                     </button>
                   </li>
                 ))}
@@ -385,7 +387,7 @@ export function FlowPanel() {
 
           {flow.activeHotfixes.length > 0 && (
             <>
-              <h3>Hotfixes activos</h3>
+              <h3>{t('Hotfixes activos')}</h3>
               <ul className="flow-list">
                 {flow.activeHotfixes.map((b) => (
                   <li key={b}>
@@ -395,7 +397,7 @@ export function FlowPanel() {
                       className="link"
                       onClick={() => finish('hotfix', withoutPrefix(b, config.hotfixPrefix))}
                     >
-                      finalizar
+                      {t('finalizar')}
                     </button>
                   </li>
                 ))}
@@ -407,12 +409,12 @@ export function FlowPanel() {
             type="button"
             className="danger-outline"
             onClick={() => {
-              if (!window.confirm('¿Desactivar Git Flow en este repositorio?')) return;
-              notify('info', 'Desactivando…');
-              void run('Desactivar Git Flow', () => ipc.flowDisable(repoId));
+              if (!window.confirm(t('¿Desactivar Git Flow en este repositorio?'))) return;
+              notify('info', t('Desactivando…'));
+              void run(t('Desactivar Git Flow'), () => ipc.flowDisable(repoId));
             }}
           >
-            Desactivar Git Flow
+            {t('Desactivar Git Flow')}
           </button>
         </>
       )}
@@ -422,10 +424,11 @@ export function FlowPanel() {
 
 /** Panel de reflog. */
 export function ReflogPanel() {
+  const { locale, t } = useI18n();
   const reflog = useStore((s) => s.reflog);
   const openDetail = useStore((s) => s.openDetail);
 
-  if (reflog.length === 0) return <p className="empty">Sin entradas de reflog.</p>;
+  if (reflog.length === 0) return <p className="empty">{t('Sin entradas de reflog.')}</p>;
 
   return (
     <div className="panel-body reflog">
@@ -437,7 +440,7 @@ export function ReflogPanel() {
               <span className="reflog-meta">
                 <code>{entry.shortOid}</code>
                 <span>{entry.committer}</span>
-                <span>{relativeTime(entry.timestamp)}</span>
+                <span>{relativeTime(entry.timestamp, locale)}</span>
               </span>
             </button>
           </li>

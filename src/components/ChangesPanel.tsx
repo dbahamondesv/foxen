@@ -3,6 +3,7 @@ import { useStore } from '../store/useAppStore';
 import * as ipc from '../lib/ipc';
 import { baseName, changeColor, dirName, statusChar } from '../lib/format';
 import { generateCommitMessage } from '../lib/commitMessage';
+import { useI18n } from '../lib/useI18n';
 import type { FileStatus, HunkSelection, LineSelection } from '../lib/types';
 
 /** Agrupa los archivos por directorio para mostrar un arbol plano. */
@@ -18,6 +19,7 @@ function groupByDirectory(files: FileStatus[]) {
 }
 
 export function ChangesPanel() {
+  const { t } = useI18n();
   const repoId = useStore((s) => s.repoId);
   const status = useStore((s) => s.status);
   const selectedFile = useStore((s) => s.selectedFile);
@@ -39,7 +41,7 @@ export function ChangesPanel() {
     [status],
   );
 
-  if (!repoId || !status) return <p className="empty">Sin repositorio abierto.</p>;
+  if (!repoId || !status) return <p className="empty">{t('Sin repositorio abierto.')}</p>;
 
   /** Stagea/unstagea un archivo desde su columna. */
   const toggle = (file: FileStatus, e: React.MouseEvent) => {
@@ -47,13 +49,13 @@ export function ChangesPanel() {
     const action = file.staged
       ? () => ipc.unstageFiles(repoId, [file.path])
       : () => ipc.stageFiles(repoId, [file.path]);
-    void run(file.staged ? 'Deshacer stage' : 'Hacer stage', action);
+    void run(file.staged ? t('Deshacer stage') : t('Hacer stage'), action);
   };
 
-  const stageEverything = () => void run('Hacer stage de todo', () => ipc.stageAll(repoId));
+  const stageEverything = () => void run(t('Hacer stage de todo'), () => ipc.stageAll(repoId));
 
   const unstageEverything = () =>
-    void run('Quitar todo del stage', () =>
+    void run(t('Quitar todo del stage'), () =>
       ipc.unstageFiles(
         repoId,
         staged.map((f) => f.path),
@@ -63,10 +65,10 @@ export function ChangesPanel() {
   /** Rellena el mensaje con una propuesta generada a partir del stage. */
   const generateMessage = () => {
     if (staged.length === 0) {
-      notify('info', 'Añade archivos al stage para generar un mensaje');
+      notify('info', t('Añade archivos al stage para generar un mensaje'));
       return;
     }
-    void run('Generar mensaje', async () => {
+    void run(t('Generar mensaje'), async () => {
       // Se lee el diff del stage para describir el contenido real del cambio,
       // no solo la lista de archivos.
       const diff = await ipc.getDiff({
@@ -81,7 +83,7 @@ export function ChangesPanel() {
       });
       const suggestion = generateCommitMessage(staged, diff.files);
       if (!suggestion) {
-        notify('info', 'Añade archivos al stage para generar un mensaje');
+        notify('info', t('Añade archivos al stage para generar un mensaje'));
         return;
       }
       setCommitMessage(suggestion);
@@ -89,37 +91,39 @@ export function ChangesPanel() {
   };
 
   const discard = (file: FileStatus) => {
-    void run(`Descartar ${baseName(file.path)}`, () => ipc.discardFiles(repoId, [file.path]));
+    void run(t('Descartar {file}', { file: baseName(file.path) }), () =>
+      ipc.discardFiles(repoId, [file.path]),
+    );
   };
 
   /** Resuelve un archivo en conflicto (lado `ours`/`theirs`/`base` o staged). */
   const resolve = (file: FileStatus, side: 'ours' | 'theirs' | 'base' | null) =>
-    void run(`Resolver ${baseName(file.path)}`, () =>
+    void run(t('Resolver {file}', { file: baseName(file.path) }), () =>
       ipc.resolveConflict(repoId, file.path, side),
     );
 
   const commit = () => {
     const message = commitMessage.trim();
     if (!message) {
-      notify('error', 'El mensaje del commit no puede estar vacio');
+      notify('error', t('El mensaje del commit no puede estar vacio'));
       return;
     }
-    void run('Crear commit', async () => {
+    void run(t('Crear commit'), async () => {
       const result = await ipc.createCommit(repoId, message, false, false, true);
       setCommitMessage('');
       return result;
     });
   };
 
-  const stashAll = () => void run('Crear stash', () => ipc.pushStash(repoId, null, true, false, false));
+  const stashAll = () => void run(t('Crear stash'), () => ipc.pushStash(repoId, null, true, false, false));
 
   const commitAndPush = () => {
     const message = commitMessage.trim();
     if (!message) {
-      notify('error', 'El mensaje del commit no puede estar vacio');
+      notify('error', t('El mensaje del commit no puede estar vacio'));
       return;
     }
-    void run('Commit y push', async () => {
+    void run(t('Commit y push'), async () => {
       await ipc.createCommit(repoId, message, false, false, true);
       setCommitMessage('');
       return useStore.getState().pushCurrent();
@@ -141,11 +145,11 @@ export function ChangesPanel() {
           </button>
           {isStagedColumn ? (
             <button type="button" className="link" onClick={unstageEverything}>
-              Quitar todo
+              {t('Quitar todo')}
             </button>
           ) : (
             <button type="button" className="link" onClick={stageEverything}>
-              Anadir todo
+              {t('Anadir todo')}
             </button>
           )}
         </header>
@@ -171,7 +175,7 @@ export function ChangesPanel() {
                   <button
                     type="button"
                     className={`status-cell ${changeColor(file.kind)}`}
-                    title={isStagedColumn ? 'Quitar del stage' : 'Anadir al stage'}
+                    title={isStagedColumn ? t('Quitar del stage') : t('Anadir al stage')}
                     onClick={(e) => toggle(file, e)}
                   >
                     {isStagedColumn ? (file.staged ? statusChar(file) : '') : ''}
@@ -181,7 +185,7 @@ export function ChangesPanel() {
                   <button
                     type="button"
                     className={`status-cell ${changeColor(file.kind)}`}
-                    title={isStagedColumn ? '' : 'Anadir al stage'}
+                    title={isStagedColumn ? '' : t('Anadir al stage')}
                     onClick={(e) => toggle(file, e)}
                   >
                     {!isStagedColumn && !file.staged ? statusChar(file) : ''}
@@ -192,53 +196,55 @@ export function ChangesPanel() {
                     {file.oldPath && <em className="file-old"> ← {baseName(file.oldPath)}</em>}
                   </span>
 
-                  {file.conflicted && <span className="badge badge-conflict">conflicto</span>}
+                  {file.conflicted && (
+                    <span className="badge badge-conflict">{t('conflicto')}</span>
+                  )}
 
                   {file.conflicted && (
                     <span className="conflict-actions">
                       <button
                         type="button"
                         className="link"
-                        title="Quedarse con la version de la rama actual"
+                        title={t('Quedarse con la version de la rama actual')}
                         onClick={(e) => {
                           e.stopPropagation();
                           resolve(file, 'ours');
                         }}
                       >
-                        mío
+                        {t('mío')}
                       </button>
                       <button
                         type="button"
                         className="link"
-                        title="Quedarse con la version de la rama que se fusiona"
+                        title={t('Quedarse con la version de la rama que se fusiona')}
                         onClick={(e) => {
                           e.stopPropagation();
                           resolve(file, 'theirs');
                         }}
                       >
-                        suyo
+                        {t('suyo')}
                       </button>
                       <button
                         type="button"
                         className="link"
-                        title="Restaurar la version base comun"
+                        title={t('Restaurar la version base comun')}
                         onClick={(e) => {
                           e.stopPropagation();
                           resolve(file, 'base');
                         }}
                       >
-                        base
+                        {t('base')}
                       </button>
                       <button
                         type="button"
                         className="link"
-                        title="Marcar como resuelto usando el archivo tal como esta"
+                        title={t('Marcar como resuelto usando el archivo tal como esta')}
                         onClick={(e) => {
                           e.stopPropagation();
                           resolve(file, null);
                         }}
                       >
-                        resuelto
+                        {t('resuelto')}
                       </button>
                     </span>
                   )}
@@ -252,13 +258,13 @@ export function ChangesPanel() {
                     <button
                       type="button"
                       className="link danger"
-                      title="Descartar cambios"
+                      title={t('Descartar cambios')}
                       onClick={(e) => {
                         e.stopPropagation();
                         discard(file);
                       }}
                     >
-                      descartar
+                      {t('descartar')}
                     </button>
                   )}
                 </div>
@@ -273,19 +279,21 @@ export function ChangesPanel() {
     <div className="panel-body changes">
       {status.conflictedCount > 0 && (
         <p className="alert alert-error">
-          {status.conflictedCount} archivo(s) en conflicto. Resuelvelos para continuar.
+          {t('{count} archivo(s) en conflicto. Resuélvelos para continuar.', {
+            count: status.conflictedCount,
+          })}
         </p>
       )}
 
       {renderGroup('Staged', staged, true)}
       {renderGroup('Unstaged', unstaged, false)}
 
-      {status.files.length === 0 && <p className="empty">Working tree limpio.</p>}
+      {status.files.length === 0 && <p className="empty">{t('Working tree limpio.')}</p>}
 
       <div className="commit-box">
         <textarea
           className="commit-message"
-          placeholder={`Mensaje para ${status.headBranch ?? 'HEAD'}`}
+          placeholder={t('Mensaje para {branch}', { branch: status.headBranch ?? 'HEAD' })}
           value={commitMessage}
           onChange={(e) => setCommitMessage(e.target.value)}
           rows={4}
@@ -297,30 +305,30 @@ export function ChangesPanel() {
             disabled={staged.length === 0}
             onClick={commit}
           >
-            Commit {staged.length > 0 ? `(${staged.length})` : ''}
+            {t('Commit')} {staged.length > 0 ? `(${staged.length})` : ''}
           </button>
           <button
             type="button"
             disabled={staged.length === 0}
             onClick={commitAndPush}
-            title="Crear el commit y subir la rama actual al remoto"
+            title={t('Crear el commit y subir la rama actual al remoto')}
           >
-            Commit y push
+            {t('Commit y push')}
           </button>
           <button
             type="button"
             disabled={staged.length === 0}
             onClick={generateMessage}
-            title="Generar un mensaje a partir de los cambios en el stage"
+            title={t('Generar un mensaje a partir de los cambios en el stage')}
           >
-            Generar mensaje
+            {t('Generar mensaje')}
           </button>
           <button
             type="button"
             disabled={status.clean}
             onClick={() => stashAll()}
           >
-            Stash
+            {t('Stash')}
           </button>
         </div>
       </div>
@@ -330,6 +338,7 @@ export function ChangesPanel() {
 
 /** Vista del diff del archivo seleccionado, con stage por fragmento. */
 export function DiffPanel() {
+  const { t } = useI18n();
   const repoId = useStore((s) => s.repoId);
   const diff = useStore((s) => s.diff);
   const selectedFile = useStore((s) => s.selectedFile);
@@ -347,11 +356,11 @@ export function DiffPanel() {
   }, [diff]);
 
   if (!repoId || !diff || !selectedFile) {
-    return <p className="empty">Selecciona un archivo para ver el diff.</p>;
+    return <p className="empty">{t('Selecciona un archivo para ver el diff.')}</p>;
   }
 
   const file = diff.files[0];
-  if (!file) return <p className="empty">Sin diferencias para este archivo.</p>;
+  if (!file) return <p className="empty">{t('Sin diferencias para este archivo.')}</p>;
   // Los diffs de un commit son de solo lectura: no se stagea ni se descarta.
   const canEdit = selectedSide !== 'commit';
 
@@ -387,17 +396,19 @@ export function DiffPanel() {
 
   const stageHunk = (hunkIndex: number) =>
     void run(
-      selectedSide === 'staged' ? 'Quitar del stage' : 'Hacer stage del fragmento',
+      selectedSide === 'staged' ? t('Quitar del stage') : t('Hacer stage del fragmento'),
       () => ipc.stageHunks(repoId, [selectionFor(hunkIndex)]),
     );
 
   const discardHunk = (hunkIndex: number) =>
-    void run('Descartar fragmento', () =>
+    void run(t('Descartar fragmento'), () =>
       ipc.discardHunk(repoId, file.path, hunkIndex, selectedSide === 'staged'),
     );
 
-  if (file.isBinary) return <p className="empty">Archivo binario: no se puede mostrar el diff.</p>;
-  if (file.tooLarge) return <p className="empty">Archivo demasiado grande para mostrar el diff.</p>;
+  if (file.isBinary)
+    return <p className="empty">{t('Archivo binario: no se puede mostrar el diff.')}</p>;
+  if (file.tooLarge)
+    return <p className="empty">{t('Archivo demasiado grande para mostrar el diff.')}</p>;
 
   return (
     <div className="panel-body diff">
@@ -408,7 +419,7 @@ export function DiffPanel() {
             className="detail-back"
             onClick={() => void selectFile(null)}
           >
-            ← Volver
+            ← {t('Volver')}
           </button>
         )}
         <strong>{file.path}</strong>
@@ -425,7 +436,7 @@ export function DiffPanel() {
             {canEdit && (
               <div className="hunk-actions">
                 <button type="button" className="link" onClick={() => stageHunk(hunkIndex)}>
-                  {selectedSide === 'staged' ? 'quitar del stage' : 'stagear'}
+                  {selectedSide === 'staged' ? t('quitar del stage') : t('stagear')}
                 </button>
                 <button
                   type="button"
@@ -433,7 +444,7 @@ export function DiffPanel() {
                   hidden={selectedSide === 'staged'}
                   onClick={() => discardHunk(hunkIndex)}
                 >
-                  descartar
+                  {t('descartar')}
                 </button>
               </div>
             )}
@@ -467,8 +478,10 @@ export function DiffPanel() {
         </div>
       ))}
 
-      {file.hunks.length === 0 && <p className="empty">Sin cambios visibles.</p>}
-      {canEdit && <p className="hint">Pulsa una linea para excluirla del siguiente stage.</p>}
+      {file.hunks.length === 0 && <p className="empty">{t('Sin cambios visibles.')}</p>}
+      {canEdit && (
+        <p className="hint">{t('Pulsa una linea para excluirla del siguiente stage.')}</p>
+      )}
     </div>
   );
 }

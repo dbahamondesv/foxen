@@ -4,8 +4,10 @@ import { openUrl } from '@tauri-apps/plugin-opener';
 import { useStore } from '../store/useAppStore';
 import { errorMessage } from '../lib/ipc';
 import type { GitHubRepo } from '../lib/types';
+import { useI18n } from '../lib/useI18n';
 
 export function PublishToGitHubModal() {
+  const { t } = useI18n();
   const close = useStore((s) => s.closePublish);
   const publishToGitHub = useStore((s) => s.publishToGitHub);
   const repoId = useStore((s) => s.repoId);
@@ -54,9 +56,15 @@ export function PublishToGitHubModal() {
     const origin = remotes.find((r) => r.name === 'origin');
     if (origin) {
       const accepted = await confirm(
-        `El repositorio ya tiene un remoto «origin» apuntando a:\n\n${origin.url}\n\n` +
-          'Se sobreescribirá con la URL del nuevo repositorio de GitHub y se hará push de la rama actual. ¿Continuar?',
-        { title: 'Sobreescribir origin', kind: 'warning', okLabel: 'Publicar', cancelLabel: 'Cancelar' },
+        t('El repositorio ya tiene un remoto «origin» apuntando a:\n\n{url}\n\nSe sobreescribirá con la URL del nuevo repositorio de GitHub y se hará push de la rama actual. ¿Continuar?', {
+          url: origin.url,
+        }),
+        {
+          title: t('Sobreescribir origin'),
+          kind: 'warning',
+          okLabel: t('Publicar'),
+          cancelLabel: t('Cancelar'),
+        },
       );
       if (!accepted) return;
       replaceOrigin = true;
@@ -96,21 +104,21 @@ export function PublishToGitHubModal() {
         <header className="modal-header">
           <div>
             <h2 id="publish-github-title" style={{ margin: 0, fontSize: '1.2em' }}>
-              {published ? 'Repositorio publicado' : 'Publicar en GitHub'}
+              {published ? t('Repositorio publicado') : t('Publicar en GitHub')}
             </h2>
             <small style={{ color: 'var(--text-muted)' }}>
               {published
                 ? published.fullName
                 : githubUser
-                  ? `Usando la cuenta @${githubUser.login}`
-                  : 'Crea el repositorio y sube esta rama'}
+                  ? t('Usando la cuenta @{user}', { user: githubUser.login })
+                  : t('Crea el repositorio y sube esta rama')}
             </small>
           </div>
           <button
             type="button"
             className="icon-button"
             onClick={close}
-            aria-label="Cerrar"
+            aria-label={t('Cerrar')}
             disabled={loading}
           >
             ×
@@ -122,15 +130,17 @@ export function PublishToGitHubModal() {
             <div style={{ textAlign: 'center', padding: '12px 0' }}>
               <div style={{ fontSize: 48, marginBottom: 8 }}>🚀</div>
               <h3 style={{ margin: 0, color: 'var(--color-ahead, #3fb950)' }}>
-                ¡Publicado con éxito!
+                {t('¡Publicado con éxito!')}
               </h3>
               <p style={{ marginTop: 8, color: 'var(--text-muted)', wordBreak: 'break-all' }}>
                 <strong>{published.fullName}</strong> ·{' '}
-                {published.private ? 'privado' : 'público'} ·{' '}
-                {published.defaultBranch ? `rama predeterminada: ${published.defaultBranch}` : ''}
+                {published.private ? t('privado') : t('público')} ·{' '}
+                {published.defaultBranch
+                  ? t('rama predeterminada: {branch}', { branch: published.defaultBranch })
+                  : ''}
               </p>
               <p style={{ marginTop: 4, fontSize: 13, color: 'var(--text-muted)' }}>
-                La rama actual se subió y quedó vinculada a su upstream.
+                {t('La rama actual se subió y quedó vinculada a su upstream.')}
               </p>
             </div>
             <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
@@ -139,10 +149,10 @@ export function PublishToGitHubModal() {
                 className="primary"
                 onClick={() => openRepoUrl(published.htmlUrl)}
               >
-                🌐 Ver en GitHub
+                🌐 {t('Ver en GitHub')}
               </button>
               <button type="button" onClick={close}>
-                Cerrar
+                {t('Cerrar')}
               </button>
             </div>
           </div>
@@ -154,7 +164,7 @@ export function PublishToGitHubModal() {
           >
             <div>
               <label style={{ display: 'block', marginBottom: 6, fontSize: 13 }}>
-                Nombre del repositorio
+                {t('Nombre del repositorio')}
               </label>
               <input
                 type="text"
@@ -166,19 +176,19 @@ export function PublishToGitHubModal() {
                 disabled={loading}
               />
               <small style={{ color: 'var(--text-muted)' }}>
-                Solo letras, dígitos, «-», «_» y «.»
+                {t('Solo letras, dígitos, «-», «_» y «.»')}
               </small>
             </div>
 
             <div>
               <label style={{ display: 'block', marginBottom: 6, fontSize: 13 }}>
-                Descripción (opcional)
+                {t('Descripción (opcional)')}
               </label>
               <input
                 type="text"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                placeholder="Describe de qué trata este proyecto"
+                placeholder={t('Describe de qué trata este proyecto')}
                 style={{ width: '100%' }}
                 disabled={loading}
               />
@@ -186,7 +196,7 @@ export function PublishToGitHubModal() {
 
             <div>
               <label style={{ display: 'block', marginBottom: 6, fontSize: 13 }}>
-                Visibilidad
+                {t('Visibilidad')}
               </label>
               <div style={{ display: 'flex', gap: 16 }}>
                 <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -198,7 +208,7 @@ export function PublishToGitHubModal() {
                     onChange={() => setVisibility('private')}
                     disabled={loading}
                   />
-                  Privado
+                  {t('Privado')}
                 </label>
                 <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                   <input
@@ -209,19 +219,19 @@ export function PublishToGitHubModal() {
                     onChange={() => setVisibility('public')}
                     disabled={loading}
                   />
-                  Público
+                  {t('Público')}
                 </label>
               </div>
               <small style={{ color: 'var(--text-muted)' }}>
                 {visibility === 'private'
-                  ? 'Solo tú (y colaboradores) podrás verlo.'
-                  : 'Cualquiera podrá ver este repositorio.'}
+                  ? t('Solo tú (y colaboradores) podrás verlo.')
+                  : t('Cualquiera podrá ver este repositorio.')}
               </small>
             </div>
 
             <div>
               <label style={{ display: 'block', marginBottom: 6, fontSize: 13 }}>
-                Organización (opcional)
+                {t('Organización (opcional)')}
               </label>
               <input
                 type="text"
@@ -232,7 +242,7 @@ export function PublishToGitHubModal() {
                 disabled={loading}
               />
               <small style={{ color: 'var(--text-muted)' }}>
-                Deja vacío para crearlo en tu cuenta personal.
+                {t('Deja vacío para crearlo en tu cuenta personal.')}
               </small>
             </div>
           </form>
@@ -244,7 +254,7 @@ export function PublishToGitHubModal() {
             style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}
           >
             <button type="button" onClick={close} disabled={loading}>
-              Cancelar
+              {t('Cancelar')}
             </button>
             <button
               type="button"
@@ -252,7 +262,7 @@ export function PublishToGitHubModal() {
               onClick={() => void submit()}
               disabled={loading || !name.trim()}
             >
-              {loading ? 'Publicando…' : 'Crear y publicar'}
+              {loading ? t('Publicando…') : t('Crear y publicar')}
             </button>
           </footer>
         )}

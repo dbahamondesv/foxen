@@ -1,5 +1,6 @@
 import { useStore } from '../store/useAppStore';
 import * as ipc from '../lib/ipc';
+import { useI18n } from '../lib/useI18n';
 
 /**
  * Aviso de operacion en curso (fusion o rebase) con acciones para cerrarla.
@@ -8,6 +9,7 @@ import * as ipc from '../lib/ipc';
  * habia que terminar la operacion desde la terminal.
  */
 export function OperationBanner() {
+  const { t } = useI18n();
   const repoId = useStore((s) => s.repoId);
   const operationState = useStore((s) => s.operationState);
   const loading = useStore((s) => s.loading);
@@ -19,21 +21,21 @@ export function OperationBanner() {
   const { mergeInProgress, rebaseInProgress, conflictedFiles } = operationState;
   if (!mergeInProgress && !rebaseInProgress) return null;
 
-  const kind = rebaseInProgress ? 'Rebase' : 'Fusion';
+  const kind = rebaseInProgress ? t('Rebase') : t('Fusión');
   const conflicts = conflictedFiles.length;
 
   const continueOp = () => {
     if (rebaseInProgress) {
-      void run('Continuar rebase', () => ipc.rebaseContinue(repoId));
+      void run(t('Continuar rebase'), () => ipc.rebaseContinue(repoId));
       return;
     }
-    void run('Continuar fusion', () =>
+    void run(t('Continuar fusión'), () =>
       ipc.mergeContinue(repoId, commitMessage.trim() ? commitMessage.trim() : null),
     );
   };
 
   const abortOp = () => {
-    void run(rebaseInProgress ? 'Abortar rebase' : 'Abortar fusion', () =>
+    void run(rebaseInProgress ? t('Abortar rebase') : t('Abortar fusión'), () =>
       rebaseInProgress ? ipc.rebaseAbort(repoId) : ipc.abortMerge(repoId),
     );
   };
@@ -41,20 +43,20 @@ export function OperationBanner() {
   return (
     <div className="op-banner" role="status">
       <span className="op-banner-text">
-        <strong>{kind} en curso</strong>
+        <strong>{kind} {t('en curso')}</strong>
         {conflicts > 0
-          ? ` · ${conflicts} archivo(s) en conflicto: resolvelos en el panel Cambios`
-          : ' · sin conflictos pendientes'}
+          ? ` · ${t('{count} archivo(s) en conflicto: resolvelos en el panel Cambios', { count: conflicts })}`
+          : ` · ${t('sin conflictos pendientes')}`}
       </span>
       <div className="op-banner-actions">
         {rebaseInProgress && (
           <button
             type="button"
-            onClick={() => void run('Saltar paso', () => ipc.rebaseSkip(repoId))}
+            onClick={() => void run(t('Saltar paso'), () => ipc.rebaseSkip(repoId))}
             disabled={loading}
-            title="Descarta este commit del rebase y continua con el siguiente"
+            title={t('Descarta este commit del rebase y continua con el siguiente')}
           >
-            Saltar
+            {t('Saltar')}
           </button>
         )}
         <button
@@ -64,16 +66,16 @@ export function OperationBanner() {
           disabled={loading || conflicts > 0}
           title={
             conflicts > 0
-              ? 'Resuelve los conflictos antes de continuar'
+              ? t('Resuelve los conflictos antes de continuar')
               : rebaseInProgress
-                ? 'Reaplica el commit siguiente'
-                : 'Crea el commit de fusion y cierra la operacion'
+                ? t('Reaplica el commit siguiente')
+                : t('Crea el commit de fusion y cierra la operacion')
           }
         >
-          Continuar
+          {t('Continuar')}
         </button>
         <button type="button" className="danger" onClick={abortOp} disabled={loading}>
-          Abortar
+          {t('Abortar')}
         </button>
       </div>
     </div>

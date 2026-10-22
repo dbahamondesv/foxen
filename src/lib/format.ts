@@ -161,15 +161,22 @@ export function dirName(path: string): string {
   return idx === -1 ? '' : path.slice(0, idx);
 }
 
-/** Tiempo relativo corto: "hace 3h". */
-export function relativeTime(unixSeconds: number): string {
+/** Tiempo relativo corto: "hace 3h" / "3h ago". */
+export function relativeTime(unixSeconds: number, locale: 'es' | 'en' = 'es'): string {
   const delta = Math.floor(Date.now() / 1000) - unixSeconds;
-  if (delta < 0) return 'ahora';
-  if (delta < 60) return 'ahora';
-  if (delta < 3600) return `hace ${Math.floor(delta / 60)}m`;
-  if (delta < 86400) return `hace ${Math.floor(delta / 3600)}h`;
-  if (delta < 2592000) return `hace ${Math.floor(delta / 86400)}d`;
-  return new Date(unixSeconds * 1000).toLocaleDateString();
+  const now = locale === 'en' ? 'now' : 'ahora';
+  if (delta < 0) return now;
+  if (delta < 60) return now;
+  const value =
+    delta < 3600
+      ? `${Math.floor(delta / 60)}m`
+      : delta < 86400
+        ? `${Math.floor(delta / 3600)}h`
+        : delta < 2592000
+          ? `${Math.floor(delta / 86400)}d`
+          : null;
+  if (value) return locale === 'en' ? `${value} ago` : `hace ${value}`;
+  return new Date(unixSeconds * 1000).toLocaleDateString(locale === 'en' ? 'en' : 'es');
 }
 
 /** Ancho aproximado de un texto en pixeles, para el grafo. */

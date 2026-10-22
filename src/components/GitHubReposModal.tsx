@@ -5,8 +5,10 @@ import { useStore } from '../store/useAppStore';
 import { relativeTime } from '../lib/format';
 import { errorMessage } from '../lib/ipc';
 import type { GitHubRepo } from '../lib/types';
+import { useI18n } from '../lib/useI18n';
 
 export function GitHubReposModal() {
+  const { locale, t } = useI18n();
   const close = useStore((s) => s.closeGitHubRepos);
   const user = useStore((s) => s.githubUser);
   const repos = useStore((s) => s.githubRepos);
@@ -46,7 +48,7 @@ export function GitHubReposModal() {
       const selected = await open({
         directory: true,
         multiple: false,
-        title: `Selecciona la carpeta donde guardar ${repo.name}`,
+        title: t('Selecciona la carpeta donde guardar {repo}', { repo: repo.name }),
       });
 
       if (typeof selected !== 'string') return;
@@ -58,10 +60,16 @@ export function GitHubReposModal() {
         : `${selected}${separator}${repo.name}`;
 
       setCloningRepo(repo.fullName);
-      notify('info', `Clonando ${repo.fullName} en ${destination}...`);
+      notify(
+        'info',
+        t('Clonando {repo} en {destination}...', {
+          repo: repo.fullName,
+          destination,
+        }),
+      );
       await cloneAndOpen(repo.cloneUrl, destination);
     } catch (err) {
-      notify('error', `Error al clonar: ${String(err)}`);
+      notify('error', t('Error al clonar: {error}', { error: String(err) }));
     } finally {
       setCloningRepo(null);
     }
@@ -94,10 +102,12 @@ export function GitHubReposModal() {
             )}
             <div>
               <h2 id="github-repos-title" style={{ margin: 0, fontSize: '1.2em' }}>
-                {user ? `${user.name || user.login} (@${user.login})` : 'Repositorios de GitHub'}
+                {user
+                  ? `${user.name || user.login} (@${user.login})`
+                  : t('Repositorios de GitHub')}
               </h2>
               <small style={{ color: 'var(--text-muted)' }}>
-                Gestión de fuentes y clonación en tu espacio local
+                {t('Gestión de fuentes y clonación en tu espacio local')}
               </small>
             </div>
           </div>
@@ -108,14 +118,19 @@ export function GitHubReposModal() {
               className="link danger"
               style={{ fontSize: 13 }}
               onClick={() => {
-                if (window.confirm('¿Deseas cerrar tu sesión de GitHub en Foxen?')) {
+                if (window.confirm(t('¿Deseas cerrar tu sesión de GitHub en Foxen?'))) {
                   void logout();
                 }
               }}
             >
-              Cerrar sesión
+              {t('Cerrar sesión')}
             </button>
-            <button type="button" className="icon-button" onClick={close} aria-label="Cerrar">
+            <button
+              type="button"
+              className="icon-button"
+              onClick={close}
+              aria-label={t('Cerrar')}
+            >
               ×
             </button>
           </div>
@@ -126,7 +141,7 @@ export function GitHubReposModal() {
           <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
             <input
               type="search"
-              placeholder="Buscar repositorios por nombre o descripción..."
+              placeholder={t('Buscar repositorios por nombre o descripción...')}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               style={{ flex: 1, minWidth: 220 }}
@@ -138,21 +153,21 @@ export function GitHubReposModal() {
                 className={`segmented-option ${filter === 'all' ? 'is-active' : ''}`}
                 onClick={() => setFilter('all')}
               >
-                Todos ({repos.length})
+                {t('Todos')} ({repos.length})
               </button>
               <button
                 type="button"
                 className={`segmented-option ${filter === 'public' ? 'is-active' : ''}`}
                 onClick={() => setFilter('public')}
               >
-                Públicos
+                {t('Públicos')}
               </button>
               <button
                 type="button"
                 className={`segmented-option ${filter === 'private' ? 'is-active' : ''}`}
                 onClick={() => setFilter('private')}
               >
-                Privados
+                {t('Privados')}
               </button>
             </div>
 
@@ -160,18 +175,18 @@ export function GitHubReposModal() {
               type="button"
               onClick={() => void refreshRepos()}
               disabled={reposLoading}
-              title="Actualizar lista de repositorios"
+              title={t('Actualizar lista de repositorios')}
             >
-              {reposLoading ? '↻ Cargando…' : '↻ Actualizar'}
+              {reposLoading ? `↻ ${t('Cargando…')}` : `↻ ${t('Actualizar')}`}
             </button>
 
             <button
               type="button"
               onClick={() => openUrl('https://github.com/new').catch((err) => notify('error', errorMessage(err)))}
               className="secondary"
-              title="Crear un nuevo repositorio en GitHub"
+              title={t('Crear un nuevo repositorio en GitHub')}
             >
-              + Nuevo en GitHub
+              + {t('Nuevo en GitHub')}
             </button>
           </div>
 
@@ -190,7 +205,8 @@ export function GitHubReposModal() {
             >
               <span className="spinner">⏳</span>
               <span>
-                Clonando <strong>{cloningRepo}</strong>... Esto puede tardar unos segundos dependiendo del tamaño.
+                {t('Clonando')} <strong>{cloningRepo}</strong>...{' '}
+                {t('Esto puede tardar unos segundos dependiendo del tamaño.')}
               </span>
             </div>
           )}
@@ -198,11 +214,13 @@ export function GitHubReposModal() {
           {/* Lista de repositorios */}
           {reposLoading && repos.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--text-muted)' }}>
-              Cargando tus repositorios de GitHub...
+              {t('Cargando tus repositorios de GitHub...')}
             </div>
           ) : filteredRepos.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--text-muted)' }}>
-              {search ? 'No se encontraron repositorios con ese criterio.' : 'No se encontraron repositorios.'}
+              {search
+                ? t('No se encontraron repositorios con ese criterio.')
+                : t('No se encontraron repositorios.')}
             </div>
           ) : (
             <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -229,11 +247,11 @@ export function GitHubReposModal() {
                         className={`badge ${repo.private ? 'badge-warn' : 'badge-ahead'}`}
                         style={{ fontSize: 11, padding: '2px 6px' }}
                       >
-                        {repo.private ? '🔒 Privado' : '🌐 Público'}
+                        {repo.private ? `🔒 ${t('Privado')}` : `🌐 ${t('Público')}`}
                       </span>
                       {repo.defaultBranch && (
                         <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                          rama: <code>{repo.defaultBranch}</code>
+                          {t('rama:')} <code>{repo.defaultBranch}</code>
                         </span>
                       )}
                     </div>
@@ -246,7 +264,10 @@ export function GitHubReposModal() {
 
                     <div style={{ display: 'flex', gap: 14, fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
                       {repo.updatedAt && (
-                        <span>Actualizado {relativeTime(new Date(repo.updatedAt).getTime() / 1000)}</span>
+                        <span>
+                          {t('Actualizado')}{' '}
+                          {relativeTime(new Date(repo.updatedAt).getTime() / 1000, locale)}
+                        </span>
                       )}
                       {repo.stargazersCount !== undefined && repo.stargazersCount !== null && repo.stargazersCount > 0 && (
                         <span>★ {repo.stargazersCount}</span>
@@ -260,17 +281,17 @@ export function GitHubReposModal() {
                       className="primary"
                       onClick={() => void handleClone(repo)}
                       disabled={Boolean(cloningRepo)}
-                      title="Clonar a una carpeta local y abrir en Foxen"
+                      title={t('Clonar a una carpeta local y abrir en Foxen')}
                     >
-                      📥 Clonar y Abrir
+                      📥 {t('Clonar y Abrir')}
                     </button>
                     <button
                       type="button"
                       onClick={() => openUrl(repo.htmlUrl).catch((err) => notify('error', errorMessage(err)))}
                       className="secondary"
-                      title="Ver en GitHub"
+                      title={t('Ver en GitHub')}
                     >
-                      ↗ Ver
+                      ↗ {t('Ver')}
                     </button>
                   </div>
                 </li>
@@ -281,10 +302,10 @@ export function GitHubReposModal() {
 
         <footer className="modal-footer" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-            Total: {repos.length} repositorios sincronizados con GitHub
+            {t('Total: {count} repositorios sincronizados con GitHub', { count: repos.length })}
           </span>
           <button type="button" onClick={close}>
-            Cerrar
+            {t('Cerrar')}
           </button>
         </footer>
       </div>

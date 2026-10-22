@@ -3,8 +3,10 @@ import { openUrl } from '@tauri-apps/plugin-opener';
 import { useStore } from '../store/useAppStore';
 import * as ipc from '../lib/ipc';
 import type { GitHubLoginState } from '../lib/types';
+import { useI18n } from '../lib/useI18n';
 
 export function GitHubAuthModal() {
+  const { t } = useI18n();
   const close = useStore((s) => s.closeGitHubLogin);
   const openRepos = useStore((s) => s.openGitHubRepos);
   const refreshUser = useStore((s) => s.refreshGitHubUser);
@@ -75,7 +77,7 @@ export function GitHubAuthModal() {
       if (result.success && result.token) {
         setSuccessUser(result.username ?? 'usuario');
         await refreshUser();
-        notify('success', `Conectado a GitHub como @${result.username ?? 'usuario'}`);
+        notify('success', t('Conectado a GitHub como @{user}', { user: result.username ?? t('usuario') }));
         successTimerRef.current = window.setTimeout(() => {
           close();
           openRepos();
@@ -101,13 +103,13 @@ export function GitHubAuthModal() {
       if (res.success) {
         setSuccessUser(res.username ?? 'usuario');
         await refreshUser();
-        notify('success', `Conectado a GitHub como @${res.username ?? 'usuario'}`);
+        notify('success', t('Conectado a GitHub como @{user}', { user: res.username ?? t('usuario') }));
         successTimerRef.current = window.setTimeout(() => {
           close();
           openRepos();
           }, 1200);
       } else {
-        setErrorMsg(res.errorDescription ?? res.error ?? 'No se pudo iniciar sesión con gh');
+        setErrorMsg(res.errorDescription ?? res.error ?? t('No se pudo iniciar sesión con gh'));
       }
     } catch (err) {
       setErrorMsg(ipc.errorMessage(err));
@@ -143,7 +145,7 @@ export function GitHubAuthModal() {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      notify('info', `Código: ${loginState.userCode}`);
+      notify('info', t('Código: {code}', { code: loginState.userCode }));
     }
   };
 
@@ -160,7 +162,7 @@ export function GitHubAuthModal() {
     } else {
       localStorage.removeItem('foxen:githubClientId');
     }
-    notify('info', 'Client ID actualizado. Reintentando...');
+    notify('info', t('Client ID actualizado. Reintentando...'));
     void startFlow(trimmed);
   };
 
@@ -178,7 +180,7 @@ export function GitHubAuthModal() {
   const handleManualSave = async () => {
     const pat = manualPat.trim();
     if (!pat) {
-      notify('error', 'Ingresa un token de acceso personal');
+      notify('error', t('Ingresa un token de acceso personal'));
       return;
     }
     setLoading(true);
@@ -188,13 +190,13 @@ export function GitHubAuthModal() {
       if (res.success) {
         setSuccessUser(res.username ?? 'usuario');
         await refreshUser();
-        notify('success', `Conectado con token a GitHub como @${res.username}`);
+        notify('success', t('Conectado con token a GitHub como @{user}', { user: res.username ?? t('usuario') }));
         successTimerRef.current = window.setTimeout(() => {
           close();
           openRepos();
           }, 1200);
       } else {
-        setErrorMsg(res.errorDescription ?? 'Token inválido');
+        setErrorMsg(res.errorDescription ?? t('Token inválido'));
       }
     } catch (err) {
       setErrorMsg(ipc.errorMessage(err));
@@ -226,7 +228,7 @@ export function GitHubAuthModal() {
       >
         <header className="modal-header">
           <h2 id="github-auth-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontSize: '1.3em' }}>🐙</span> Iniciar sesión en GitHub
+            <span style={{ fontSize: '1.3em' }}>🐙</span> {t('Iniciar sesión en GitHub')}
           </h2>
           <button
             type="button"
@@ -235,7 +237,7 @@ export function GitHubAuthModal() {
               pollingRef.current = false;
               close();
             }}
-            aria-label="Cerrar"
+            aria-label={t('Cerrar')}
           >
             ×
           </button>
@@ -246,10 +248,10 @@ export function GitHubAuthModal() {
             <div className="github-auth-success" style={{ textAlign: 'center', padding: '24px 0' }}>
               <div style={{ fontSize: 48, marginBottom: 8 }}>✅</div>
               <h3 style={{ margin: 0, color: 'var(--color-ahead, #3fb950)' }}>
-                ¡Autenticado con éxito!
+                {t('¡Autenticado con éxito!')}
               </h3>
               <p style={{ marginTop: 6, color: 'var(--text-muted)' }}>
-                Conectado como <strong>@{successUser}</strong>. Abriendo tus repositorios...
+                {t('Conectado como')} <strong>@{successUser}</strong>. {t('Abriendo tus repositorios...')}
               </p>
             </div>
           ) : !showManualPat ? (
@@ -257,8 +259,8 @@ export function GitHubAuthModal() {
               {!loginState && !successUser && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                   <p style={{ margin: 0, lineHeight: 1.5 }}>
-                    Elige cómo iniciar sesión en <strong>GitHub</strong>. Si tu cuenta tiene
-                    verificación en dos pasos (MFA), GitHub te la pedirá en el navegador.
+                    {t('Elige cómo iniciar sesión en')} <strong>GitHub</strong>.{' '}
+                    {t('Si tu cuenta tiene verificación en dos pasos (MFA), GitHub te la pedirá en el navegador.')}
                   </p>
                   <button
                     type="button"
@@ -267,11 +269,11 @@ export function GitHubAuthModal() {
                     disabled={loading}
                     style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
                   >
-                    ⚡ Usar sesión de GitHub CLI (gh)
+                    ⚡ {t('Usar sesión de GitHub CLI (gh)')}
                   </button>
                   <small style={{ color: 'var(--text-muted)', textAlign: 'center' }}>
-                    Recomendado si ya usas <code>gh</code> en tu equipo: reutiliza tu sesión sin
-                    volver a autenticarte.
+                    {t('Recomendado si ya usas')} <code>gh</code>{' '}
+                    {t('en tu equipo: reutiliza tu sesión sin volver a autenticarte.')}
                   </small>
                   {flowReady ? (
                     <button
@@ -281,7 +283,7 @@ export function GitHubAuthModal() {
                       disabled={loading}
                       style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
                     >
-                      🌐 Iniciar sesión en el navegador (Device Flow)
+                      🌐 {t('Iniciar sesión en el navegador (Device Flow)')}
                     </button>
                   ) : (
                     <div
@@ -298,8 +300,8 @@ export function GitHubAuthModal() {
                       }}
                     >
                       <span>
-                        El inicio en el navegador requiere una OAuth App propia con «Enable Device
-                        Flow». Sin ella, usa <code>gh</code> o un PAT.
+                        {t('El inicio en el navegador requiere una OAuth App propia con «Enable Device Flow». Sin ella, usa')}{' '}
+                        <code>gh</code> {t('o un PAT.')}
                       </span>
                       <button
                         type="button"
@@ -307,7 +309,7 @@ export function GitHubAuthModal() {
                         style={{ alignSelf: 'flex-start', fontSize: 12 }}
                         onClick={() => setShowConfig(true)}
                       >
-                        ⚙ Configurar Client ID para el Device Flow
+                        ⚙ {t('Configurar Client ID para el Device Flow')}
                       </button>
                     </div>
                   )}
@@ -316,8 +318,8 @@ export function GitHubAuthModal() {
 
               {loginState && (
                 <p style={{ margin: 0, lineHeight: 1.5 }}>
-                  Hemos abierto tu navegador web para que autorices a <strong>Foxen</strong> el acceso
-                  a tus repositorios de GitHub.
+                  {t('Hemos abierto tu navegador web para que autorices a')} <strong>Foxen</strong>{' '}
+                  {t('el acceso a tus repositorios de GitHub.')}
                 </p>
               )}
 
@@ -336,7 +338,7 @@ export function GitHubAuthModal() {
                   }}
                 >
                   <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>
-                    Código de verificación:
+                    {t('Código de verificación:')}
                   </span>
                   <div
                     style={{
@@ -352,10 +354,10 @@ export function GitHubAuthModal() {
                   </div>
                   <div style={{ display: 'flex', gap: 10 }}>
                     <button type="button" onClick={() => void copyCode()}>
-                      {copied ? '✓ ¡Copiado!' : '📋 Copiar código'}
+                      {copied ? `✓ ${t('¡Copiado!')}` : `📋 ${t('Copiar código')}`}
                     </button>
                     <button type="button" onClick={openBrowserAgain} className="secondary">
-                      🌐 Abrir navegador de nuevo
+                      🌐 {t('Abrir navegador de nuevo')}
                     </button>
                   </div>
                 </div>
@@ -373,7 +375,7 @@ export function GitHubAuthModal() {
                   }}
                 >
                   <span className="spinner">⏳</span>
-                  <span>Esperando autorización en GitHub...</span>
+                  <span>{t('Esperando autorización en GitHub...')}</span>
                 </div>
               )}
 
@@ -392,7 +394,7 @@ export function GitHubAuthModal() {
                   }}
                 >
                   <div style={{ color: 'var(--color-danger, #f85149)' }}>
-                    <strong>{is404 ? 'Configuración de OAuth requerida (404)' : 'Error:'}</strong>
+                    <strong>{is404 ? t('Configuración de OAuth requerida (404)') : `${t('Error')}:`}</strong>
                   </div>
                   <div>{errorMsg}</div>
 
@@ -409,11 +411,11 @@ export function GitHubAuthModal() {
                         fontSize: 12,
                       }}
                     >
-                      <strong>¿Cómo solucionarlo en GitHub?</strong>
+                      <strong>{t('¿Cómo solucionarlo en GitHub?')}</strong>
                       <ol style={{ margin: 0, paddingLeft: 18, lineHeight: 1.5 }}>
-                        <li>Abre <strong>Developer Settings &gt; OAuth Apps</strong> en GitHub.</li>
-                        <li>Selecciona tu App y activa la casilla <strong>Enable Device Flow</strong>.</li>
-                        <li>Guarda los cambios y pulsa reintentar.</li>
+                        <li>{t('Abre')} <strong>Developer Settings &gt; OAuth Apps</strong> {t('en GitHub.')}</li>
+                        <li>{t('Selecciona tu App y activa la casilla')} <strong>Enable Device Flow</strong>.</li>
+                        <li>{t('Guarda los cambios y pulsa reintentar.')}</li>
                       </ol>
                       <button
                         type="button"
@@ -421,14 +423,14 @@ export function GitHubAuthModal() {
                         style={{ alignSelf: 'flex-start', fontSize: 12 }}
                         onClick={openOAuthSettingsPage}
                       >
-                        ↗ Ir a Developer Settings en GitHub
+                        ↗ {t('Ir a Developer Settings en GitHub')}
                       </button>
                     </div>
                   )}
 
                   <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 4 }}>
                     <button type="button" className="primary" onClick={() => void startFlow()}>
-                      Reintentar conexión
+                      {t('Reintentar conexión')}
                     </button>
                     <button
                       type="button"
@@ -436,14 +438,14 @@ export function GitHubAuthModal() {
                       onClick={() => void handleGhLogin()}
                       disabled={loading}
                     >
-                      ⚡ Usar GitHub CLI (gh)
+                      ⚡ {t('Usar GitHub CLI (gh)')}
                     </button>
                     <button
                       type="button"
                       onClick={() => setShowConfig((v) => !v)}
                       style={{ fontSize: 12 }}
                     >
-                      ⚙ {showConfig ? 'Ocultar Client ID' : 'Cambiar Client ID'}
+                      ⚙ {showConfig ? t('Ocultar Client ID') : t('Cambiar Client ID')}
                     </button>
                   </div>
                 </div>
@@ -462,22 +464,23 @@ export function GitHubAuthModal() {
                   }}
                 >
                   <label style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                    Client ID de GitHub OAuth App:
+                    {t('Client ID de GitHub OAuth App:')}
                   </label>
                   <div style={{ display: 'flex', gap: 8 }}>
                     <input
                       type="text"
-                      placeholder="Ej: Ov23li... o tu Client ID"
+                      placeholder={t('Ej: Ov23li... o tu Client ID')}
                       value={clientId}
                       onChange={(e) => setClientId(e.target.value)}
                       style={{ flex: 1 }}
                     />
                     <button type="button" onClick={handleSaveClientId}>
-                      Guardar y Probar
+                      {t('Guardar y Probar')}
                     </button>
                   </div>
                   <small style={{ color: 'var(--text-muted)' }}>
-                    Puedes crear una OAuth App en GitHub (URL de devolución: <code>http://localhost</code>) y activar «Enable Device Flow».
+                    {t('Puedes crear una OAuth App en GitHub (URL de devolución:')}{' '}
+                    <code>http://localhost</code>) {t('y activar «Enable Device Flow».')}
                   </small>
                 </div>
               )}
@@ -498,7 +501,7 @@ export function GitHubAuthModal() {
                   style={{ fontSize: 13 }}
                   onClick={() => setShowManualPat(true)}
                 >
-                  🔑 O conéctate directamente con un Personal Access Token (PAT)
+                  🔑 {t('O conéctate directamente con un Personal Access Token (PAT)')}
                 </button>
               </div>
             </>
@@ -517,19 +520,19 @@ export function GitHubAuthModal() {
                 }}
               >
                 <div>
-                  <strong>Opción rápida sin configurar OAuth App</strong>
+                  <strong>{t('Opción rápida sin configurar OAuth App')}</strong>
                   <p style={{ margin: '4px 0 0', fontSize: 12, color: 'var(--text-muted)' }}>
-                    Genera un token personal en GitHub con permisos de repositorios.
+                    {t('Genera un token personal en GitHub con permisos de repositorios.')}
                   </p>
                 </div>
                 <button type="button" className="secondary" onClick={openNewTokenPage} style={{ flexShrink: 0 }}>
-                  🌐 Generar en GitHub ↗
+                  🌐 {t('Generar en GitHub')} ↗
                 </button>
               </div>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 <label style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                  Personal Access Token (PAT):
+                  {t('Personal Access Token (PAT):')}
                 </label>
                 <input
                   type="password"
@@ -543,7 +546,7 @@ export function GitHubAuthModal() {
                 />
                 <input
                   type="text"
-                  placeholder="Usuario de GitHub (opcional)"
+                  placeholder={t('Usuario de GitHub (opcional)')}
                   value={manualUser}
                   onChange={(e) => setManualUser(e.target.value)}
                 />
@@ -560,7 +563,7 @@ export function GitHubAuthModal() {
                   onClick={() => void handleManualSave()}
                   disabled={loading || !manualPat.trim()}
                 >
-                  {loading ? 'Verificando…' : 'Conectar con Token'}
+                  {loading ? t('Verificando…') : t('Conectar con Token')}
                 </button>
                 <button
                   type="button"
@@ -569,7 +572,7 @@ export function GitHubAuthModal() {
                     setErrorMsg(null);
                   }}
                 >
-                  Volver al inicio de sesión con navegador
+                  {t('Volver al inicio de sesión con navegador')}
                 </button>
               </div>
             </div>
@@ -584,7 +587,7 @@ export function GitHubAuthModal() {
               close();
             }}
           >
-            {successUser ? 'Cerrar' : 'Cancelar'}
+            {successUser ? t('Cerrar') : t('Cancelar')}
           </button>
         </footer>
       </div>

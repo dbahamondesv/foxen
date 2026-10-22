@@ -2,14 +2,22 @@ import { useEffect, useRef, useState } from 'react';
 import { useStore } from '../store/useAppStore';
 import * as ipc from '../lib/ipc';
 import { CredentialsForm } from './CredentialsForm';
+import { HelpButton } from './HelpPanel';
 import { isGitHubHost, normalizeHost } from '../lib/hosts';
 import type { CredentialStatus } from '../lib/types';
 import type { Theme } from '../lib/theme';
+import type { Locale } from '../lib/i18n';
+import { useI18n } from '../lib/useI18n';
 
 const THEMES: { id: Theme; label: string; hint: string }[] = [
   { id: 'light', label: 'Claro', hint: 'Fondo blanco, para salas iluminadas' },
   { id: 'dark', label: 'Oscuro', hint: 'Fondo oscuro, para trabajar de noche' },
   { id: 'system', label: 'Seguir al sistema', hint: 'Cambia solo con la preferencia del SO' },
+];
+
+const LANGUAGES: { id: Locale; label: string; hint: string }[] = [
+  { id: 'es', label: 'Español', hint: 'Interfaz y mensajes en español' },
+  { id: 'en', label: 'English', hint: 'Interfaz y mensajes en inglés' },
 ];
 
 /**
@@ -19,8 +27,11 @@ const THEMES: { id: Theme; label: string; hint: string }[] = [
  * la app, no del repositorio: deben abrirse incluso sin ningun repo abierto.
  */
 export function SettingsPanel() {
+  const { t } = useI18n();
   const theme = useStore((s) => s.theme);
   const setTheme = useStore((s) => s.setTheme);
+  const locale = useStore((s) => s.locale);
+  const setLocale = useStore((s) => s.setLocale);
   const closeSettings = useStore((s) => s.closeSettings);
   const remotes = useStore((s) => s.remotes);
   const githubUser = useStore((s) => s.githubUser);
@@ -97,12 +108,12 @@ export function SettingsPanel() {
         tabIndex={-1}
       >
         <header className="modal-header">
-          <h2 id="settings-title">Configuracion</h2>
+          <h2 id="settings-title">{t('Configuracion')}</h2>
           <button
             type="button"
             className="icon-button"
             onClick={closeSettings}
-            aria-label="Cerrar configuracion"
+            aria-label={t('Cerrar configuracion')}
           >
             ×
           </button>
@@ -110,12 +121,11 @@ export function SettingsPanel() {
 
         <div className="modal-body">
           <section className="settings-group">
-            <h3 className="settings-label">Tema</h3>
+            <h3 className="settings-label">{t('Tema')}</h3>
             <p className="settings-hint">
-              Elige el aspecto de la interfaz. «Seguir al sistema» usa la preferencia de tu
-              escritorio y se actualiza sola si esta cambia.
+              {t('Elige el aspecto de la interfaz. «Seguir al sistema» usa la preferencia de tu escritorio y se actualiza sola si esta cambia.')}
             </p>
-            <div className="segmented" role="radiogroup" aria-label="Tema de la interfaz">
+            <div className="segmented" role="radiogroup" aria-label={t('Tema de la interfaz')}>
               {THEMES.map((option) => (
                 <button
                   key={option.id}
@@ -125,15 +135,41 @@ export function SettingsPanel() {
                   className={`segmented-option${theme === option.id ? ' is-active' : ''}`}
                   onClick={() => setTheme(option.id)}
                 >
+                  {t(option.label)}
+                </button>
+              ))}
+            </div>
+            <p className="settings-hint">
+              {t(THEMES.find((option) => option.id === theme)?.hint ?? '')}
+            </p>
+          </section>
+
+          <section className="settings-group">
+            <h3 className="settings-label">{t('Idioma')}</h3>
+            <p className="settings-hint">
+              {t('Elige el idioma de la interfaz. El cambio se aplica al instante.')}
+            </p>
+            <div className="segmented" role="radiogroup" aria-label={t('Idioma de la interfaz')}>
+              {LANGUAGES.map((option) => (
+                <button
+                  key={option.id}
+                  type="button"
+                  role="radio"
+                  aria-checked={locale === option.id}
+                  className={`segmented-option${locale === option.id ? ' is-active' : ''}`}
+                  onClick={() => setLocale(option.id)}
+                >
                   {option.label}
                 </button>
               ))}
             </div>
-            <p className="settings-hint">{THEMES.find((t) => t.id === theme)?.hint}</p>
+            <p className="settings-hint">
+              {t(LANGUAGES.find((option) => option.id === locale)?.hint ?? '')}
+            </p>
           </section>
 
           <section className="settings-group">
-            <h3 className="settings-label">Cuenta de GitHub</h3>
+            <h3 className="settings-label">{t('Cuenta de GitHub')}</h3>
             {githubUser ? (
               <div
                 style={{
@@ -157,7 +193,7 @@ export function SettingsPanel() {
                   <div>
                     <strong>{githubUser.name || githubUser.login}</strong>
                     <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                      @{githubUser.login} · {githubUser.email || 'Conectado'}
+                      @{githubUser.login} · {githubUser.email || t('Conectado')}
                     </div>
                   </div>
                 </div>
@@ -170,22 +206,21 @@ export function SettingsPanel() {
                       openGitHubRepos();
                     }}
                   >
-                    Ver repositorios
+                    {t('Ver repositorios')}
                   </button>
                   <button
                     type="button"
                     className="danger-outline"
                     onClick={() => void logoutGitHub()}
                   >
-                    Cerrar sesión
+                    {t('Cerrar sesión')}
                   </button>
                 </div>
               </div>
             ) : (
               <div>
                 <p className="settings-hint">
-                  Inicia sesión con tu cuenta de GitHub para autorizar Foxen con acceso a tus repositorios
-                  y clonar/gestionar tus fuentes directamente.
+                  {t('Inicia sesión con tu cuenta de GitHub para autorizar Foxen con acceso a tus repositorios y clonar/gestionar tus fuentes directamente.')}
                 </p>
                 <button
                   type="button"
@@ -196,25 +231,20 @@ export function SettingsPanel() {
                   }}
                   style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}
                 >
-                  <span>🐙</span> Iniciar sesión en GitHub
+                  <span>🐙</span> {t('Iniciar sesión en GitHub')}
                 </button>
               </div>
             )}
           </section>
 
           <section className="settings-group">
-            <h3 className="settings-label">Credenciales</h3>
+            <h3 className="settings-label">{t('Credenciales')}</h3>
             <p className="settings-hint">
-              Por ahora Foxen solo admite GitHub; la integración con GitLab, Bitbucket y otros
-              servicios llegará en una próxima versión. Usuario y contraseña o token para los
-              remotos HTTPS de GitHub. Los remotos SSH (<code>git@...</code>) usan{' '}
-              <code>ssh-agent</code> y no necesitan credenciales aquí. Se guardan en el llavero
-              del sistema con el host como clave, asi que valen para todos los repositorios. La
-              contrasena nunca se guarda en Foxen.
+              {t('Por ahora Foxen solo admite GitHub; la integración con GitLab, Bitbucket y otros servicios llegará en una próxima versión. Usuario y contraseña o token para los remotos HTTPS de GitHub. Los remotos SSH (git@...) usan ssh-agent y no necesitan credenciales aquí. Se guardan en el llavero del sistema con el host como clave, asi que valen para todos los repositorios. La contrasena nunca se guarda en Foxen.')}
             </p>
 
             <div className="host-chips">
-              <span className="host-chips-label">Host</span>
+              <span className="host-chips-label">{t('Host')}</span>
               {commonHosts.map((h) => (
                 <button
                   key={h}
@@ -229,7 +259,7 @@ export function SettingsPanel() {
 
             {httpRemotes.length > 0 && (
               <div className="host-chips">
-                <span className="host-chips-label">Del repositorio abierto</span>
+                <span className="host-chips-label">{t('Del repositorio abierto')}</span>
                 {httpRemotes.map((remote) => (
                   <button
                     key={remote.name}
@@ -246,14 +276,16 @@ export function SettingsPanel() {
             <div className="field-row">
               <input
                 type="text"
-                placeholder="host, por ejemplo github.com o https://github.com/owner/repo.git"
+                placeholder={t('host, por ejemplo github.com o https://github.com/owner/repo.git')}
                 value={host}
                 onChange={(e) => setHost(e.target.value)}
-                aria-label="Host de las credenciales"
+                aria-label={t('Host de las credenciales')}
               />
             </div>
             {host.trim() !== '' && normalizeHost(host) !== host.trim() && (
-              <p className="settings-hint">Se guardará para: <code>{normalizeHost(host)}</code></p>
+              <p className="settings-hint">
+                {t('Se guardará para:')} <code>{normalizeHost(host)}</code>
+              </p>
             )}
 
             {host.trim() !== '' && (
@@ -265,11 +297,22 @@ export function SettingsPanel() {
               />
             )}
           </section>
+
+          <section className="settings-group">
+            <h3 className="settings-label">{t('Ayuda y manual')}</h3>
+            <p className="settings-hint">
+              {t('Consulta el manual integrado para aprender el flujo de trabajo, los atajos y la resolución de problemas.')}
+            </p>
+            <div className="settings-help-actions">
+              <HelpButton section="settings" label={t('Abrir manual')} />
+              <span className="settings-hint">{t('También puedes pulsar F1 o ? en cualquier momento.')}</span>
+            </div>
+          </section>
         </div>
 
         <footer className="modal-footer">
           <button type="button" className="primary" onClick={closeSettings}>
-            Cerrar
+            {t('Cerrar')}
           </button>
         </footer>
       </div>

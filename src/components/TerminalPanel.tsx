@@ -9,6 +9,8 @@ import { errorMessage } from '../lib/ipc';
 import { decodeBase64, encodeBase64 } from '../lib/b64';
 import type { PtyOutput } from '../lib/types';
 import { useStore } from '../store/useAppStore';
+import { getLocale } from '../lib/i18n';
+import { useI18n } from '../lib/useI18n';
 
 /** Altura por defecto del panel, en pixeles. */
 const DEFAULT_HEIGHT = 280;
@@ -68,10 +70,12 @@ const TERMINAL_THEMES: Record<'light' | 'dark', ITheme> = {
   },
 };
 
-const NOTICE = '\r\n\x1b[2m[proceso terminado]\x1b[0m\r\n';
+const NOTICE_ES = '\r\n\x1b[2m[proceso terminado]\x1b[0m\r\n';
+const NOTICE_EN = '\r\n\x1b[2m[process exited]\x1b[0m\r\n';
 
 /** Terminal embebida: un shell del usuario corriendo en la PTY del repositorio. */
 export function TerminalPanel() {
+  const { t } = useI18n();
   const repoId = useStore((s) => s.repoId);
   const repositories = useStore((s) => s.repositories);
   const resolvedTheme = useStore((s) => s.resolvedTheme);
@@ -109,7 +113,7 @@ export function TerminalPanel() {
 
     const channel = new Channel<PtyOutput>((message) => {
       if (message.exited) {
-        term.write(NOTICE);
+        term.write(getLocale() === 'en' ? NOTICE_EN : NOTICE_ES);
         return;
       }
       if (message.data) term.write(decodeBase64(message.data));
@@ -189,7 +193,7 @@ export function TerminalPanel() {
         className="terminal-resize"
         role="separator"
         aria-orientation="horizontal"
-        aria-label="Redimensionar terminal"
+        aria-label={t('Redimensionar terminal')}
         onPointerDown={onResizeDown}
         onPointerMove={onResizeMove}
         onPointerUp={onResizeUp}
@@ -197,7 +201,7 @@ export function TerminalPanel() {
       />
 
       <header className="terminal-head">
-        <span className="terminal-title">Terminal</span>
+        <span className="terminal-title">{t('Terminal')}</span>
         <code className="terminal-cwd">{cwd}</code>
         <div className="terminal-actions">
           <button
@@ -210,14 +214,14 @@ export function TerminalPanel() {
               )
             }
           >
-            abrir en el sistema
+            {t('abrir en el sistema')}
           </button>
           <button
             type="button"
             className="icon-button"
             onClick={toggleTerminal}
-            aria-label="Cerrar terminal"
-            title="Cerrar terminal"
+            aria-label={t('Cerrar terminal')}
+            title={t('Cerrar terminal')}
           >
             ✕
           </button>

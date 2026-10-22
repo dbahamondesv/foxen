@@ -1,9 +1,11 @@
 import { useStore } from '../store/useAppStore';
 import * as ipc from '../lib/ipc';
 import { authorColor, authorInitial, baseName, changeColor } from '../lib/format';
+import { useI18n } from '../lib/useI18n';
 
 /** Detalle del commit seleccionado: metadatos, mensaje y archivos. */
 export function CommitDetailView({ onFileOpen }: { onFileOpen?: () => void }) {
+  const { t } = useI18n();
   const repoId = useStore((s) => s.repoId);
   const detail = useStore((s) => s.selectedDetail);
   const run = useStore((s) => s.run);
@@ -15,7 +17,7 @@ export function CommitDetailView({ onFileOpen }: { onFileOpen?: () => void }) {
     return (
       <div className="panel-empty-state">
         <span className="empty-icon">📌</span>
-        <p>Selecciona un commit en el grafo para explorar su detalle.</p>
+        <p>{t('Selecciona un commit en el grafo para explorar su detalle.')}</p>
       </div>
     );
   }
@@ -42,10 +44,10 @@ export function CommitDetailView({ onFileOpen }: { onFileOpen?: () => void }) {
           </div>
           <span
             className="graph-shortsha"
-            title={`SHA completo: ${detail.oid} (clic para copiar)`}
+            title={t('SHA completo: {sha} (clic para copiar)', { sha: detail.oid })}
             onClick={() => {
               void navigator.clipboard.writeText(detail.oid);
-              notify('info', `SHA ${detail.shortOid} copiado al portapapeles`);
+              notify('info', t('SHA {sha} copiado al portapapeles', { sha: detail.shortOid }));
             }}
           >
             {detail.shortOid}
@@ -56,7 +58,7 @@ export function CommitDetailView({ onFileOpen }: { onFileOpen?: () => void }) {
 
         {detail.parents.length > 1 && (
           <p className="detail-parents">
-            Merge con {detail.parents.length} padres:{' '}
+            {t('Merge con {count} padres:', { count: detail.parents.length })}{' '}
             {detail.parents.map((p) => (
               <code key={p} className="parent-sha" title={p}>
                 {p.slice(0, 7)}
@@ -67,10 +69,14 @@ export function CommitDetailView({ onFileOpen }: { onFileOpen?: () => void }) {
       </header>
 
       <div className="detail-stats">
-        <span className="stats-pill files-count">{detail.stats.filesChanged} archivos</span>
+        <span className="stats-pill files-count">
+          {t('{count} archivos', { count: detail.stats.filesChanged })}
+        </span>
         <span className="stats-pill ins">+{detail.stats.insertions}</span>
         <span className="stats-pill del">−{detail.stats.deletions}</span>
-        {!detail.reachableFromHead && <span className="badge badge-warn">no alcanzable</span>}
+        {!detail.reachableFromHead && (
+          <span className="badge badge-warn">{t('no alcanzable')}</span>
+        )}
       </div>
 
       {detail.body && <pre className="detail-body">{detail.body}</pre>}
@@ -79,8 +85,8 @@ export function CommitDetailView({ onFileOpen }: { onFileOpen?: () => void }) {
         <button
           type="button"
           className="topbar-action-btn"
-          onClick={() => void run('Cherry-pick', () => ipc.cherryPick(repoId, detail.oid))}
-          title="Aplica los cambios de este commit sobre la rama actual"
+          onClick={() => void run(t('Cherry-pick'), () => ipc.cherryPick(repoId, detail.oid))}
+          title={t('Aplica los cambios de este commit sobre la rama actual')}
         >
           <span className="btn-icon">🍒</span>
           <span>Cherry-pick</span>
@@ -88,8 +94,8 @@ export function CommitDetailView({ onFileOpen }: { onFileOpen?: () => void }) {
         <button
           type="button"
           className="topbar-action-btn"
-          onClick={() => void run('Revert', () => ipc.revertCommit(repoId, detail.oid))}
-          title="Crea un nuevo commit que invierte los cambios de este commit"
+          onClick={() => void run(t('Revert'), () => ipc.revertCommit(repoId, detail.oid))}
+          title={t('Crea un nuevo commit que invierte los cambios de este commit')}
         >
           <span className="btn-icon">↩</span>
           <span>Revert</span>
@@ -97,25 +103,26 @@ export function CommitDetailView({ onFileOpen }: { onFileOpen?: () => void }) {
         <button
           type="button"
           className="topbar-action-btn danger-outline"
-          title="Mueve la rama actual a este commit conservando los cambios en el working tree"
+          title={t('Mueve la rama actual a este commit conservando los cambios en el working tree')}
           onClick={() => {
             const branch = currentBranch;
             if (!branch) {
-              notify('error', 'HEAD esta desligado: no hay rama que mover');
+              notify('error', t('HEAD esta desligado: no hay rama que mover'));
               return;
             }
-            if (!window.confirm(`¿Resetear ${branch} a ${detail.shortOid}?`)) return;
-            void run(`Resetear ${branch}`, () =>
+            if (!window.confirm(t('¿Resetear {branch} a {sha}?', { branch, sha: detail.shortOid })))
+              return;
+            void run(t('Resetear {branch}', { branch }), () =>
               ipc.resetBranch(repoId, branch, detail.oid, 'mixed'),
             );
           }}
         >
-          <span>Resetear a aquí</span>
+          <span>{t('Resetear a aquí')}</span>
         </button>
       </div>
 
       <div className="detail-files-header">
-        <h3>Archivos modificados ({detail.files.length})</h3>
+        <h3>{t('Archivos modificados')} ({detail.files.length})</h3>
       </div>
 
       <ul className="detail-files">
@@ -143,7 +150,7 @@ export function CommitDetailView({ onFileOpen }: { onFileOpen?: () => void }) {
       </ul>
 
       <details className="detail-raw">
-        <summary>Mensaje de commit sin formato</summary>
+        <summary>{t('Mensaje de commit sin formato')}</summary>
         <pre>{message}</pre>
       </details>
     </div>

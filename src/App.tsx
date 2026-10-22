@@ -12,7 +12,9 @@ import { PublishToGitHubModal } from './components/PublishToGitHubModal';
 import { MergeModal } from './components/MergeModal';
 import { CreateTagModal } from './components/CreateTagModal';
 import { OperationBanner } from './components/OperationBanner';
+import { HelpPanel } from './components/HelpPanel';
 import { useStore } from './store/useAppStore';
+import { useI18n } from './lib/useI18n';
 import * as ipc from './lib/ipc';
 import { useEffect } from 'react';
 import { onSystemThemeChange } from './lib/theme';
@@ -33,6 +35,7 @@ function repoNameFromUrl(url: string): string {
 }
 
 export default function App() {
+  const { t } = useI18n();
   const repoId = useStore((s) => s.repoId);
   const graph = useStore((s) => s.graph);
   const panel = useStore((s) => s.panel);
@@ -50,6 +53,7 @@ export default function App() {
   const openGitHubLogin = useStore((s) => s.openGitHubLogin);
   const openGitHubRepos = useStore((s) => s.openGitHubRepos);
   const openPath = useStore((s) => s.openPath);
+  const openHelp = useStore((s) => s.openHelp);
   const restoreSession = useStore((s) => s.restoreSession);
   const publishOpen = useStore((s) => s.publishOpen);
   const mergeTarget = useStore((s) => s.mergeTarget);
@@ -58,9 +62,10 @@ export default function App() {
   // del SO con la app abierta.
   useEffect(() => onSystemThemeChange(() => syncSystemTheme()), [syncSystemTheme]);
 
-  // El primer pintado usa la cache; el backend confirma el tema persistido.
+  // El primer pintado usa la cache; el backend confirma el tema y el idioma.
   useEffect(() => {
     void useStore.getState().hydrateTheme();
+    void useStore.getState().hydrateLocale();
   }, []);
 
   // Reabre los repositorios que quedaron abiertos en la sesion anterior.
@@ -117,9 +122,24 @@ export default function App() {
   }, []);
 
   // Refresco manual. F5 recargaria el webview y Ctrl+R tambien, asi que se
-  // interceptan para refrescar el repositorio en su lugar.
+  // interceptan para refrescar el repositorio en su lugar. F1 y ? abren el
+  // manual; ? se ignora mientras se escribe en un campo.
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      const typing = Boolean(
+        target?.closest('input, textarea, select, [contenteditable="true"]'),
+      );
+      const wantsHelp =
+        event.key === 'F1' ||
+        (event.key === '?' && !typing && !event.ctrlKey && !event.metaKey && !event.altKey);
+      if (wantsHelp) {
+        event.preventDefault();
+        const state = useStore.getState();
+        if (state.helpOpen) state.closeHelp();
+        else state.openHelp();
+        return;
+      }
       const wantsRefresh =
         (event.ctrlKey && !event.shiftKey && !event.altKey && event.key.toLowerCase() === 'r') ||
         event.key === 'F5';
@@ -142,7 +162,7 @@ export default function App() {
         const parent = await open({
           directory: true,
           multiple: false,
-          title: 'Elegir carpeta donde clonar',
+          title: t('Elegir carpeta donde clonar'),
         });
         if (typeof parent !== 'string') return;
         const dest = await join(parent, repoNameFromUrl(url));
@@ -172,7 +192,7 @@ export default function App() {
       const selected = await open({
         directory: true,
         multiple: false,
-        title: 'Abrir repositorio Git',
+        title: t('Abrir repositorio Git'),
       });
       if (typeof selected === 'string') await openPath(selected);
     } catch {
@@ -186,31 +206,47 @@ export default function App() {
         <TopBar />
         <div className="welcome">
           <h1>Foxen</h1>
-          <p>Abre un repositorio Git para empezar o gestiona tus fuentes desde GitHub.</p>
-          <div style={{ display: 'flex', gap: 12, justifyContent: 'center', margin: '24px 0', flexWrap: 'wrap' }}>
-            <button type="button" className="primary" onClick={() => void handleBrowseLocal()} style={{ padding: '8px 16px' }}>
-              📁 Abrir repositorio local…
+          <p>{t('Abre un repositorio Git para empezar o gestiona tus fuentes desde GitHub.')}</p>
+          <div className="welcome-actions">
+            <button type="button" className="primary" onClick={() => void handleBrowseLocal()}>
+              📁 {t('Abrir repositorio local…')}
             </button>
             {githubUser ? (
-              <button type="button" onClick={openGitHubRepos} style={{ padding: '8px 16px', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <button type="button" onClick={openGitHubRepos}>
                 <span>🐙</span>
-                <span>Explorar repositorios de GitHub (@{githubUser.login})</span>
+                <span>{t('Explorar repositorios de GitHub (@{login})', { login: githubUser.login })}</span>
               </button>
             ) : (
-              <button type="button" onClick={openGitHubLogin} style={{ padding: '8px 16px', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <button type="button" onClick={openGitHubLogin}>
                 <span>🐙</span>
-                <span>Iniciar sesión en GitHub</span>
+                <span>{t('Iniciar sesión en GitHub')}</span>
               </button>
             )}
           </div>
+
+          <section className="welcome-help" aria-labelledby="welcome-help-title">
+            <h2 id="welcome-help-title">{t('Primeros pasos')}</h2>
+            <p>{t('Abre una carpeta con un repositorio Git, clona uno desde GitHub o consulta el manual para aprender el flujo de trabajo.')}</p>
+            <ol className="welcome-steps">
+              <li>{t('1. Abre o clona un repositorio')}</li>
+              <li>{t('2. Explora el grafo y selecciona un commit')}</li>
+              <li>{t('3. Prepara y crea tus commits desde Cambios')}</li>
+              <li>{t('4. Fusiona ramas y sincroniza con el remoto')}</li>
+            </ol>
+            <button type="button" className="help-link" onClick={() => openHelp('intro')}>
+              ? {t('Ver el manual')}
+            </button>
+          </section>
+
           <p className="hint">
-            Usa el menú <strong>Foxen ▾</strong> o el botón <strong>🐙 GitHub</strong> de la barra superior.
+            {t('Usa el menú Foxen ▾ o el botón 🐙 GitHub de la barra superior.')}
           </p>
         </div>
         {settingsOpen && <SettingsPanel />}
         {githubLoginOpen && <GitHubAuthModal />}
         {githubReposOpen && <GitHubReposModal />}
         {publishOpen && <PublishToGitHubModal />}
+        <HelpPanel />
         <Toasts />
       </div>
     );
@@ -253,7 +289,7 @@ export default function App() {
               totalReachable={graph.totalReachable}
             />
           ) : (
-            <p className="empty">Cargando grafo…</p>
+            <p className="empty">{t('Cargando grafo…')}</p>
           )}
         </main>
 
@@ -268,6 +304,7 @@ export default function App() {
       {mergeTarget && <MergeModal />}
       {tagPrompt && <CreateTagModal />}
       {detailOpen && <CommitDetailModal />}
+      <HelpPanel />
       <Toasts />
     </div>
   );
