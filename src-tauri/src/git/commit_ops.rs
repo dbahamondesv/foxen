@@ -7,7 +7,7 @@ use git2::{Commit, Cred, ObjectType, Repository, ResetType, Signature};
 
 use crate::error::{AppError, AppResult};
 use crate::git::refs::ResetMode;
-use crate::git::util::{iso8601, short_oid, shorten_ref};
+use crate::git::util::{iso8601, short_oid};
 use crate::types::{
     ChangeKind, CommitDetail, CommitFileChange, CommitStats, DiffQuery, DiffSide, FileHistoryEntry,
     OperationResult, ReflogEntry,
@@ -834,28 +834,6 @@ pub fn delete_commit(repo: &mut Repository, oid: &str) -> AppResult<OperationRes
         })?
         .id();
     hard_reset(repo, &parent_oid.to_string())
-}
-
-/// Etiquetas (tags) del repositorio.
-pub fn list_tags(repo: &Repository) -> AppResult<Vec<(String, String)>> {
-    let mut out = Vec::new();
-    let references = repo.references_glob("refs/tags/*").map_err(AppError::from_git)?;
-    for reference in references.flatten() {
-        let Some(name) = reference.name() else { continue };
-        let oid = reference
-            .peel_to_commit()
-            .ok()
-            .map(|c| c.id().to_string())
-            .or_else(|| reference.target().map(|o| o.to_string()));
-        if let Some(oid) = oid {
-            out.push((shorten_ref(name), short_oid_str(&oid)));
-        }
-    }
-    Ok(out)
-}
-
-fn short_oid_str(oid: &str) -> String {
-    oid.chars().take(7).collect()
 }
 
 /// Resuelve un objeto a su oid de commit (tags anotados incluidos).

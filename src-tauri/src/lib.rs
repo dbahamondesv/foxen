@@ -157,6 +157,9 @@ pub fn run() {
             commands::flow_hotfix_finish,
             // Tags
             commands::list_tags,
+            commands::create_tag,
+            commands::delete_tag,
+            commands::suggest_tag,
             // Sistema
             commands::open_terminal,
             // Terminal embebida

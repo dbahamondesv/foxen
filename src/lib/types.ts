@@ -87,10 +87,18 @@ export interface BranchList {
   head: string | null;
 }
 
-export interface TagInfo {
+export interface TagDetail {
   name: string;
-  shortOid: string;
   fullName: string;
+  oid: string;
+  shortOid: string;
+  message: string | null;
+}
+
+export interface TagSuggestion {
+  suggested: string;
+  latest: string | null;
+  tags: TagDetail[];
 }
 
 // ---------------------------------------------------------------------------

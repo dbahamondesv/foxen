@@ -10,6 +10,7 @@ import { GitHubAuthModal } from './components/GitHubAuthModal';
 import { GitHubReposModal } from './components/GitHubReposModal';
 import { PublishToGitHubModal } from './components/PublishToGitHubModal';
 import { MergeModal } from './components/MergeModal';
+import { CreateTagModal } from './components/CreateTagModal';
 import { OperationBanner } from './components/OperationBanner';
 import { useStore } from './store/useAppStore';
 import * as ipc from './lib/ipc';
@@ -52,7 +53,7 @@ export default function App() {
   const restoreSession = useStore((s) => s.restoreSession);
   const publishOpen = useStore((s) => s.publishOpen);
   const mergeTarget = useStore((s) => s.mergeTarget);
-
+  const tagPrompt = useStore((s) => s.tagPrompt);
   // En modo «seguir al sistema» hay que repintar cuando cambia la preferencia
   // del SO con la app abierta.
   useEffect(() => onSystemThemeChange(() => syncSystemTheme()), [syncSystemTheme]);
@@ -265,6 +266,7 @@ export default function App() {
       {githubReposOpen && <GitHubReposModal />}
       {publishOpen && <PublishToGitHubModal />}
       {mergeTarget && <MergeModal />}
+      {tagPrompt && <CreateTagModal />}
       {detailOpen && <CommitDetailModal />}
       <Toasts />
     </div>

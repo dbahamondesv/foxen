@@ -36,7 +36,8 @@ import type {
   RepositoryOperationState,
   RepoStatus,
   StashEntry,
-  TagInfo,
+  TagDetail,
+  TagSuggestion,
   Credential,
   CredentialStatus,
   GitHubLoginState,
@@ -144,7 +145,22 @@ export const setUpstream = (repoId: string, branch: string, upstream: string | n
 export const resetBranch = (repoId: string, branch: string, target: string, mode: string) =>
   call<OperationResult>('reset_branch', { repoId, branch, target, mode });
 
-export const listTags = (repoId: string) => call<TagInfo[]>('list_tags', { repoId });
+export const listTags = (repoId: string) => call<TagDetail[]>('list_tags', { repoId });
+
+/** Crea un tag; con `message` es anotado, sin el es ligero. */
+export const createTag = (
+  repoId: string,
+  name: string,
+  message: string | null = null,
+  target: string | null = null,
+  force = false,
+) => call<OperationResult>('create_tag', { repoId, name, message, target, force });
+
+export const deleteTag = (repoId: string, name: string) =>
+  call<OperationResult>('delete_tag', { repoId, name });
+
+export const suggestTag = (repoId: string) =>
+  call<TagSuggestion>('suggest_tag', { repoId });
 
 // ---------------------------------------------------------------------------
 // Commits

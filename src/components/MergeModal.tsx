@@ -1,8 +1,25 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useStore } from '../store/useAppStore';
+import { isMainBranch } from '../lib/tags';
 import * as ipc from '../lib/ipc';
 
 type Strategy = 'auto' | 'no-ff' | 'ff-only' | 'squash';
+
+/**
+ * Tras fusionar hacia la principal, consulta los tags y abre el dialogo para
+ * crear la version siguiente. Los fallos se ignoran: es una comodidad, no un
+ * paso obligatorio del merge.
+ */
+async function offerTag(branch: string): Promise<void> {
+  const repoId = useStore.getState().repoId;
+  if (!repoId) return;
+  try {
+    const suggestion = await ipc.suggestTag(repoId);
+    useStore.getState().openTagPrompt(branch, suggestion.suggested, suggestion.latest);
+  } catch {
+    // Sin sugerencia no se interrumpe la fusion.
+  }
+}
 
 const STRATEGIES: { id: Strategy; label: string; hint: string }[] = [
   {
@@ -41,7 +58,6 @@ export function MergeModal() {
   const loading = useStore((s) => s.loading);
   const status = useStore((s) => s.status);
   const branches = useStore((s) => s.branches);
-
   const current = status?.headBranch ?? null;
 
   const locals = useMemo(
@@ -89,6 +105,10 @@ export function MergeModal() {
         message.trim() ? message.trim() : null,
       );
       close();
+      // Tras fusionar hacia la rama principal se ofrece etiquetar la version.
+      if (result.success && isMainBranch(destination)) {
+        void offerTag(destination);
+      }
       return result;
     });
   };

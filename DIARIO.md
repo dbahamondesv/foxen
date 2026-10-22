@@ -557,6 +557,40 @@ la 5 (red sin timeout) queda pendiente por falta de API de timeout en
 
 ## 2026-10-21 (sesión de bugs — EN CURSO)
 
+### Funcionalidad nueva: etiqueta de versión tras fusionar a main
+
+- **Backend** `git/tags.rs` (nuevo): `list`, `create` (anotado con mensaje o
+  ligero), `delete`, `suggest_next_version` (siguiente parche semver, `v0.1.0`
+  si no hay ninguno). Validación con `Reference::is_valid_name("refs/tags/…")`
+  y rechazo de colisiones con ramas. `TagDetail`/`TagSuggestion` en `types.rs`.
+- **Comandos** `create_tag`, `delete_tag`, `suggest_tag`; `list_tags` ahora
+  devuelve `TagDetail` con mensaje. Registrados en `lib.rs`.
+- **Se eliminó** el antiguo `commit_ops::list_tags` + `TagInfo` (código muerto).
+- **Frontend**: `lib/tags.ts` (`isMainBranch`), `ipc.createTag/deleteTag/
+  suggestTag`, store `tagPrompt` + `openTagPrompt/closeTagPrompt`,
+  `components/CreateTagModal.tsx` (propone la versión siguiente, campo
+  editable, tag anotado o ligero). Tras un merge **exitoso** hacia `main`/
+  `master`, `MergeModal` abre el diálogo (best-effort: si falla la sugerencia,
+  no interrumpe el merge).
+- Tests: 6 de integración Rust (crear anotado/ligero, duplicados, borrar,
+  sugerencia semver, versión inicial) + 4 vitest (`isMainBranch`).
+
+### Fix de bug: diff sin ruta mezclaba archivos
+
+- `staging.rs::parse_delta` recorría todo el diff con `Diff::foreach` y
+  recortaba por presupuesto global de líneas: con varios archivos, cada
+  `FileDiff` mezclaba líneas de otros deltas (stats invertidos, hunks de otra
+  ruta). Ahora usa `Patch::from_diff(&diff, index)` para aislar su delta.
+  Test de regresión `diff_sin_ruta_reparte_stats_por_archivo`.
+
+### Funcionalidad nueva: botón "Generar mensaje" de commit
+
+- `lib/commitMessage.ts` + botón en `ChangesPanel`: propone un mensaje
+  Conventional Commits en español leyendo el **contenido** del diff staged
+  (símbolos nuevos, dependencias, imports, textos), con fallback al estado de
+  archivos. 24 tests vitest.
+
+
 Auditoría completa (Rust backend + frontend + empaquetado/IPC) con 3 subagentes.
 El propietario autorizó "arregla todo" y "quita el botón amend". Se trabajó por
 áreas; estado de cada una abajo. **Nada está commiteado todavía.**

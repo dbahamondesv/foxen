@@ -10,5 +10,6 @@ pub mod remote;
 pub mod repo;
 pub mod staging;
 pub mod stash;
+pub mod tags;
 pub mod util;
 pub mod github_auth;

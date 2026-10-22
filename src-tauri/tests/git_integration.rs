@@ -6,7 +6,8 @@
 use foxen_lib::git::commit_ops::CommitOptions;
 use foxen_lib::git::merge::MergeOptions2;
 use foxen_lib::git::refs::NewBranch;
-use foxen_lib::git::{commit_ops, graph, merge, refs, staging, stash};
+use foxen_lib::git::tags::NewTag;
+use foxen_lib::git::{commit_ops, graph, merge, refs, staging, stash, tags};
 use foxen_lib::types::{ChangeKind, DiffQuery, DiffSide, GraphQuery};
 use std::fs;
 use std::path::PathBuf;
@@ -1064,4 +1065,171 @@ fn descubre_repositorios_anidados() {
 
     assert_eq!(found.len(), 2, "debe encontrar los dos repositorios");
     assert!(found.iter().all(|p| p.ends_with("proyecto-a") || p.ends_with("proyecto-b")));
+}
+
+// ---------------------------------------------------------------------------
+// Tags
+// ---------------------------------------------------------------------------
+
+#[test]
+fn crea_un_tag_anotado_sobre_main() {
+    let fixture = TestRepo::new("tag-anotado");
+    fixture.write("a.txt", "contenido\n");
+    fixture.commit_all("primer commit");
+
+    let repo = fixture.open();
+    let result = tags::create(
+        &repo,
+        NewTag {
+            name: "v1.0.0",
+            target: Some("main"),
+            message: Some("Primera release"),
+            force: false,
+        },
+    )
+    .expect("crear tag");
+    assert!(result.ok);
+
+    let repo = fixture.open();
+    let list = tags::list(&repo).expect("listar");
+    assert_eq!(list.len(), 1);
+    let tag = &list[0];
+    assert_eq!(tag.name, "v1.0.0");
+    assert_eq!(tag.message.as_deref(), Some("Primera release"));
+    assert_eq!(tag.oid, fixture.head_oid());
+}
+
+#[test]
+fn un_tag_sin_mensaje_es_ligero() {
+    let fixture = TestRepo::new("tag-ligero");
+    fixture.write("a.txt", "contenido\n");
+    fixture.commit_all("primer commit");
+
+    let repo = fixture.open();
+    tags::create(
+        &repo,
+        NewTag {
+            name: "snapshot",
+            target: None,
+            message: None,
+            force: false,
+        },
+    )
+    .expect("crear tag ligero");
+
+    let repo = fixture.open();
+    let list = tags::list(&repo).expect("listar");
+    assert_eq!(list.len(), 1);
+    assert!(list[0].message.is_none(), "un tag ligero no tiene mensaje");
+}
+
+#[test]
+fn no_permite_tags_duplicados_sin_force() {
+    let fixture = TestRepo::new("tag-duplicado");
+    fixture.write("a.txt", "uno\n");
+    fixture.commit_all("primer commit");
+
+    let repo = fixture.open();
+    tags::create(
+        &repo,
+        NewTag {
+            name: "v1.0.0",
+            target: None,
+            message: None,
+            force: false,
+        },
+    )
+    .expect("primer tag");
+
+    let repo = fixture.open();
+    let err = tags::create(
+        &repo,
+        NewTag {
+            name: "v1.0.0",
+            target: None,
+            message: None,
+            force: false,
+        },
+    )
+    .expect_err("no debe permitir duplicados");
+    assert_eq!(err.code, 1006, "debe ser un error de estado invalido");
+}
+
+#[test]
+fn borra_un_tag_existente() {
+    let fixture = TestRepo::new("tag-borrar");
+    fixture.write("a.txt", "uno\n");
+    fixture.commit_all("primer commit");
+
+    let repo = fixture.open();
+    tags::create(
+        &repo,
+        NewTag {
+            name: "v1.0.0",
+            target: None,
+            message: None,
+            force: false,
+        },
+    )
+    .expect("crear tag");
+
+    let repo = fixture.open();
+    tags::delete(&repo, "v1.0.0").expect("borrar tag");
+
+    let repo = fixture.open();
+    assert!(tags::list(&repo).expect("listar").is_empty());
+}
+
+#[test]
+fn sugiere_la_siguiente_version_semver() {
+    let fixture = TestRepo::new("tag-sugerir");
+    fixture.write("a.txt", "uno\n");
+    fixture.commit_all("primer commit");
+
+    let repo = fixture.open();
+    tags::create(
+        &repo,
+        NewTag {
+            name: "v0.1.0",
+            target: None,
+            message: None,
+            force: false,
+        },
+    )
+    .expect("crear v0.1.0");
+    tags::create(
+        &repo,
+        NewTag {
+            name: "v0.1.1",
+            target: None,
+            message: None,
+            force: false,
+        },
+    )
+    .expect("crear v0.1.1");
+    tags::create(
+        &repo,
+        NewTag {
+            name: "no-semver",
+            target: None,
+            message: None,
+            force: false,
+        },
+    )
+    .expect("crear tag no semver");
+
+    let repo = fixture.open();
+    let existing = tags::list(&repo).expect("listar");
+    assert_eq!(tags::suggest_next_version(&existing), "v0.1.2");
+}
+
+#[test]
+fn sin_tags_sugiere_la_version_inicial() {
+    let fixture = TestRepo::new("tag-sin-tags");
+    fixture.write("a.txt", "uno\n");
+    fixture.commit_all("primer commit");
+
+    let repo = fixture.open();
+    let existing = tags::list(&repo).expect("listar");
+    assert_eq!(tags::suggest_next_version(&existing), "v0.1.0");
 }

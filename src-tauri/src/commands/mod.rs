@@ -11,7 +11,7 @@ use tauri::{AppHandle, Manager, State};
 
 use crate::error::{AppError, AppResult};
 use crate::git::{
-    commit_ops, flow, graph, merge, refs, remote, repo::OpenRepository, staging, stash,
+    commit_ops, flow, graph, merge, refs, remote, repo::OpenRepository, staging, stash, tags,
 };
 use crate::git::repo::AppState;
 use crate::types::*;
@@ -1051,17 +1051,75 @@ pub async fn flow_hotfix_finish(
 // ---------------------------------------------------------------------------
 
 #[tauri::command]
-pub async fn list_tags(state: State<'_, AppState>, repo_id: String) -> AppResult<Vec<TagInfo>> {
+pub async fn list_tags(state: State<'_, AppState>, repo_id: String) -> AppResult<Vec<TagDetail>> {
     with_repo!(state, &repo_id, "listar tags", |repo| {
-        let tags = commit_ops::list_tags(repo)?;
-        Ok(tags
-            .into_iter()
-            .map(|(tag_name, tag_short_oid)| TagInfo {
-                full_name: format!("refs/tags/{tag_name}"),
-                name: tag_name,
-                short_oid: tag_short_oid,
+        tags::list(repo)
+    })
+}
+
+/// Crea un tag (anotado si lleva `message`) sobre `target` (por defecto HEAD).
+#[tauri::command]
+pub async fn create_tag(
+    state: State<'_, AppState>,
+    repo_id: String,
+    name: String,
+    message: Option<String>,
+    target: Option<String>,
+    force: bool,
+) -> AppResult<OperationResult> {
+    with_repo!(state, &repo_id, "crear tag", |repo| {
+        tags::create(
+            repo,
+            tags::NewTag {
+                name: &name,
+                target: target.as_deref(),
+                message: message.as_deref(),
+                force,
+            },
+        )
+    })
+}
+
+/// Borra un tag existente.
+#[tauri::command]
+pub async fn delete_tag(
+    state: State<'_, AppState>,
+    repo_id: String,
+    name: String,
+) -> AppResult<OperationResult> {
+    with_repo!(state, &repo_id, "borrar tag", |repo| {
+        tags::delete(repo, &name)
+    })
+}
+
+/// Sugiere la siguiente version semver a partir de los tags existentes.
+#[tauri::command]
+pub async fn suggest_tag(state: State<'_, AppState>, repo_id: String) -> AppResult<TagSuggestion> {
+    with_repo!(state, &repo_id, "sugerir tag", |repo| {
+        let existing = tags::list(repo)?;
+        let suggested = tags::suggest_next_version(&existing);
+        let latest = existing
+            .iter()
+            .filter_map(|t| {
+                let v = t.name.strip_prefix('v').unwrap_or(&t.name);
+                let numeric = v.split('.').all(|p| p.parse::<u64>().is_ok())
+                    && v.split('.').count() == 3;
+                numeric.then(|| t.name.clone())
             })
-            .collect())
+            .max_by_key(|n| {
+                let rest = n.strip_prefix('v').unwrap_or(n);
+                let mut it = rest.split('.');
+                (
+                    it.next().and_then(|p| p.parse::<u64>().ok()).unwrap_or(0),
+                    it.next().and_then(|p| p.parse::<u64>().ok()).unwrap_or(0),
+                    it.next().and_then(|p| p.parse::<u64>().ok()).unwrap_or(0),
+                )
+            });
+        Ok(TagSuggestion {
+            suggested,
+            latest,
+            tags: existing,
+        })
     })
 }
 // ---------------------------------------------------------------------------

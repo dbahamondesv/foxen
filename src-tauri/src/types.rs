@@ -774,11 +774,30 @@ pub struct FlowOperationResult {
     pub operation: OperationResult,
 }
 
-/// Tag del repositorio.
+/// Tag con detalle suficiente para la UI de releases.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct TagInfo {
+pub struct TagDetail {
+    /// Nombre corto (sin `refs/tags/`).
     pub name: String,
-    pub short_oid: String,
+    /// Nombre completo de la referencia.
     pub full_name: String,
+    /// OID completo del commit etiquetado.
+    pub oid: String,
+    /// OID abreviado a 7 caracteres.
+    pub short_oid: String,
+    /// Mensaje del tag anotado; `None` si es ligero.
+    pub message: Option<String>,
+}
+
+/// Sugerencia de version para el dialogo de creacion de tag.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TagSuggestion {
+    /// Version sugerida (p.ej. `v0.1.1`).
+    pub suggested: String,
+    /// Ultima version semver detectada, si la hay.
+    pub latest: Option<String>,
+    /// Tags existentes en el repositorio.
+    pub tags: Vec<TagDetail>,
 }

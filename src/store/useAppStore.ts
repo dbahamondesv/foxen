@@ -24,7 +24,7 @@ import type {
   RepositoryOperationState,
   RepoStatus,
   StashEntry,
-  TagInfo,
+  TagDetail,
   GitHubUser,
   GitHubRepo,
   PushResult,
@@ -44,7 +44,7 @@ interface FoxenState {
   status: RepoStatus | null;
   graph: CommitGraph | null;
   branches: BranchList | null;
-  tags: TagInfo[];
+  tags: TagDetail[];
   stashes: StashEntry[];
   remotes: RemoteInfo[];
   flow: FlowStatus | null;
@@ -93,6 +93,11 @@ interface FoxenState {
   publishOpen: boolean;
   /** Rama objetivo del dialogo de fusion; `null` si esta cerrado. */
   mergeTarget: string | null;
+  /**
+   * Sugerencia de tag a ofrecer tras fusionar hacia la rama principal.
+   * `null` si no hay dialogo abierto.
+   */
+  tagPrompt: { branch: string; suggested: string; latest: string | null } | null;
 
   // --- Acciones ---
   refreshRepositories: () => Promise<void>;
@@ -103,6 +108,9 @@ interface FoxenState {
 
   openMerge: (target: string) => void;
   closeMerge: () => void;
+
+  openTagPrompt: (branch: string, suggested: string, latest: string | null) => void;
+  closeTagPrompt: () => void;
 
   openGitHubLogin: () => void;
   closeGitHubLogin: () => void;
@@ -252,6 +260,7 @@ export const useStore = create<FoxenState>((set, get) => ({
   githubReposLoading: false,
   publishOpen: false,
   mergeTarget: null,
+  tagPrompt: null,
 
   // -------------------------------------------------------------------------
   // Repositorios
@@ -402,6 +411,10 @@ export const useStore = create<FoxenState>((set, get) => ({
   openMerge: (target) => set({ mergeTarget: target }),
   closeMerge: () => set({ mergeTarget: null }),
 
+  openTagPrompt: (branch, suggested, latest) =>
+    set({ tagPrompt: { branch, suggested, latest } }),
+  closeTagPrompt: () => set({ tagPrompt: null }),
+
   publishToGitHub: async (options) => {
     const { repoId } = get();
     if (!repoId) return null;
@@ -450,6 +463,7 @@ export const useStore = create<FoxenState>((set, get) => ({
       reflog: [],
       operationState: null,
       mergeTarget: null,
+      tagPrompt: null,
       selectedOid: null,
       selectedDetail: null,
       detailOpen: false,
