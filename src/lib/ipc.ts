@@ -587,3 +587,34 @@ export const settingsSaveTheme = (theme: string) =>
 
 export const settingsSaveLocale = (locale: string) =>
   call<void>('settings_save_locale', { locale });
+
+export interface PullRequest {
+  number: number;
+  title: string;
+  state: string;
+  headRefName: string;
+  baseRefName: string;
+  url: string;
+  author: string;
+  createdAt: string;
+}
+
+export interface CreatePrParams {
+  title: string;
+  body?: string;
+  base: string;
+  head: string;
+  draft?: boolean;
+}
+
+export const listPullRequests = (state?: string) => 
+  call<PullRequest[]>('list_pull_requests', { state: state || 'open' });
+
+export const createPullRequest = (params: CreatePrParams) =>
+  call<PullRequest>('create_pull_request', params);
+
+export const mergePullRequest = (number: number, method?: string) =>
+  call<PullRequest>('merge_pull_request', { number, method: method || 'merge' });
+
+export const getCurrentBranch = () =>
+  call<string>('get_current_branch', {});

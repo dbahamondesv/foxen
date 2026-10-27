@@ -1270,3 +1270,93 @@ pub async fn stop_pty(state: State<'_, crate::pty::PtyState>, repo_id: String) -
     Ok(())
 }
 pub mod github_auth;
+
+// ---------------------------------------------------------------------------
+// Pull Requests (GitHub CLI)
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+pub async fn get_current_branch(state: State<'_, AppState>, repo_id: String) -> AppResult<String> {
+    with_repo!(state, &repo_id, "obtener rama actual", |repo| {
+        let head = repo.head().map_err(AppError::from_git)?;
+        if head.is_branch() {
+            let name = head.shorthand().unwrap_or("HEAD").to_string();
+            Ok(name)
+        } else {
+            Err(AppError::invalid_state("HEAD no está en una rama"))
+        }
+    })
+}
+
+#[tauri::command]
+pub async fn list_pull_requests(stateParam: Option<String>) -> AppResult<Vec<serde_json::Value>> {
+    use std::process::Command;
+    
+    let state = stateParam.as_deref().unwrap_or("open");
+    let output = Command::new("gh")
+        .args(["pr", "list", "--state", state, "--json", "number,title,state,headRefName,baseRefName,url,author,createdAt"])
+        .output()
+        .map_err(|e| AppError::new(crate::error::ErrorKind::Internal, "No se pudo ejecutar GitHub CLI").with_detail(e.to_string()))?;
+    
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(AppError::new(crate::error::ErrorKind::Internal, "Error al listar PRs").with_detail(stderr.to_string()));
+    }
+    
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let prs: Vec<serde_json::Value> = serde_json::from_str(&stdout).unwrap_or_default();
+    Ok(prs)
+}
+
+#[tauri::command]
+pub async fn create_pull_request(
+    title: String,
+    body: Option<String>,
+    base: String,
+    head: String,
+    draft: Option<bool>,
+) -> AppResult<serde_json::Value> {
+    use std::process::Command;
+    
+    let mut args = vec!["pr", "create", "--title", &title, "--base", &base, "--head", &head];
+    if let Some(b) = &body {
+        if !b.is_empty() {
+            args.push("--body");
+            args.push(b);
+        }
+    }
+    if draft.unwrap_or(false) {
+        args.push("--draft");
+    }
+    
+    let output = Command::new("gh")
+        .args(&args)
+        .output()
+        .map_err(|e| AppError::new(crate::error::ErrorKind::Internal, "No se pudo ejecutar GitHub CLI").with_detail(e.to_string()))?;
+    
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(AppError::new(crate::error::ErrorKind::Internal, "Error al crear PR").with_detail(stderr.to_string()));
+    }
+    
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    Ok(serde_json::json!({ "url": stdout }))
+}
+
+#[tauri::command]
+pub async fn merge_pull_request(number: i32, method: Option<String>) -> AppResult<serde_json::Value> {
+    use std::process::Command;
+    
+    let method_str = method.as_deref().unwrap_or("merge");
+    let output = Command::new("gh")
+        .args(["pr", "merge", &number.to_string(), &format!("--{}", method_str)])
+        .output()
+        .map_err(|e| AppError::new(crate::error::ErrorKind::Internal, "No se pudo ejecutar GitHub CLI").with_detail(e.to_string()))?;
+    
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(AppError::new(crate::error::ErrorKind::Internal, "Error al hacer merge del PR").with_detail(stderr.to_string()));
+    }
+    
+    Ok(serde_json::json!({ "success": true }))
+}
