@@ -45,11 +45,41 @@ pub fn run() {
         .manage(deeplink::PendingCloneUrl::default())
         .manage(pty::PtyState::default())
         .setup(|app| {
-            env_logger::Builder::from_env(
-                env_logger::Env::default().default_filter_or("info,foxen=debug"),
-            )
-            .try_init()
-            .ok();
+            use std::fs::OpenOptions;
+            use std::io::Write;
+            
+            let log_dir = dirs::cache_dir()
+                .unwrap_or_else(std::env::temp_dir)
+                .join("foxen");
+            let _ = std::fs::create_dir_all(&log_dir);
+            let log_path = log_dir.join(format!("foxen-dev-{}.log", chrono::Local::now().format("%Y%m%d-%H%M%S")));
+            
+            if let Ok(file) = OpenOptions::new().create(true).append(true).open(&log_path) {
+                let file = std::sync::Arc::new(std::sync::Mutex::new(file));
+                let file_clone = file.clone();
+                env_logger::Builder::from_env(
+                    env_logger::Env::default().default_filter_or("debug,foxen=trace"),
+                )
+                .format(move |buf, record| {
+                    let ts = chrono::Local::now().format("%Y-%m-%d %H:%M:%S%.3f");
+                    let line = format!("[{} {} {}] {}\n", ts, record.level(), record.target(), record.args());
+                    let _ = writeln!(buf, "{}", line.trim_end());
+                    if let Ok(mut f) = file_clone.lock() {
+                        let _ = f.write_all(line.as_bytes());
+                        let _ = f.flush();
+                    }
+                    Ok(())
+                })
+                .try_init()
+                .ok();
+                eprintln!("FOXEN_LOG_FILE={}", log_path.display());
+            } else {
+                env_logger::Builder::from_env(
+                    env_logger::Env::default().default_filter_or("info,foxen=debug"),
+                )
+                .try_init()
+                .ok();
+            }
 
             use tauri::Manager;
             // Primer arranque con un enlace (xdg-open): queda pendiente hasta
