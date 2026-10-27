@@ -771,6 +771,71 @@ pub async fn branch_from_stash(
 }
 
 // ---------------------------------------------------------------------------
+// Git Auth Helper
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+pub async fn git_auth_setup_gh() -> AppResult<String> {
+    use std::process::Command;
+    
+    let output = Command::new("gh")
+        .args(["auth", "setup-git"])
+        .output()
+        .map_err(|e| {
+            AppError::new(
+                crate::error::ErrorKind::Internal,
+                "No se pudo ejecutar GitHub CLI",
+            )
+            .with_detail(format!("Asegúrate de tener 'gh' instalado. Error: {e}"))
+        })?;
+    
+    if output.status.success() {
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        Ok(if stdout.trim().is_empty() {
+            "Git configurado correctamente para usar las credenciales de GitHub CLI".to_string()
+        } else {
+            stdout.trim().to_string()
+        })
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        Err(AppError::new(
+            crate::error::ErrorKind::Authentication,
+            "Error al configurar Git con GitHub CLI",
+        )
+        .with_detail(stderr.trim().to_string()))
+    }
+}
+
+#[tauri::command]
+pub async fn git_auth_status_gh() -> AppResult<String> {
+    use std::process::Command;
+    
+    let output = Command::new("gh")
+        .args(["auth", "status"])
+        .output()
+        .map_err(|e| {
+            AppError::new(
+                crate::error::ErrorKind::Internal,
+                "No se pudo ejecutar GitHub CLI",
+            )
+            .with_detail(format!("Error: {e}"))
+        })?;
+    
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    
+    if output.status.success() {
+        Ok(stdout.to_string())
+    } else {
+        Err(AppError::new(
+            crate::error::ErrorKind::Authentication,
+            "GitHub CLI no está autenticado",
+        )
+        .with_detail(if stderr.trim().is_empty() { stdout.trim().to_string() } else { stderr.trim().to_string() }))
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Remotos
 // ---------------------------------------------------------------------------
 

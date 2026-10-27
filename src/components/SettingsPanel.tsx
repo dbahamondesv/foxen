@@ -238,6 +238,43 @@ export function SettingsPanel() {
           </section>
 
           <section className="settings-group">
+            <h3 className="settings-label">{t('GitHub CLI (recomendado)')}</h3>
+            <p className="settings-hint">
+              {t('Si tienes GitHub CLI instalado y autenticado, puedes configurar Git automáticamente para usarlo con todos los repositorios. Esto evita tener que introducir usuario/token manualmente.')}
+            </p>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    const res = await ipc.gitAuthStatusGh();
+                    alert(res);
+                  } catch (e: any) {
+                    alert(e?.message || String(e));
+                  }
+                }}
+              >
+                {t('Comprobar estado de gh')}
+              </button>
+              <button
+                type="button"
+                className="primary"
+                onClick={async () => {
+                  try {
+                    const res = await ipc.gitAuthSetupGh();
+                    alert(res);
+                    setRefresh((n) => n + 1);
+                  } catch (e: any) {
+                    alert(e?.detail || e?.message || String(e));
+                  }
+                }}
+              >
+                {t('Configurar Git con GitHub CLI')}
+              </button>
+            </div>
+          </section>
+
+          <section className="settings-group">
             <h3 className="settings-label">{t('Credenciales')}</h3>
             <p className="settings-hint">
               {t('Por ahora Foxen solo admite GitHub; la integración con GitLab, Bitbucket y otros servicios llegará en una próxima versión. Usuario y contraseña o token para los remotos HTTPS de GitHub. Los remotos SSH (git@...) usan ssh-agent y no necesitan credenciales aquí. Se guardan en el llavero del sistema con el host como clave, asi que valen para todos los repositorios. La contrasena nunca se guarda en Foxen.')}
