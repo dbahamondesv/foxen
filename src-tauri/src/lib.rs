@@ -140,6 +140,8 @@ pub fn run() {
             commands::github_auth::github_poll_login,
             commands::github_auth::github_login_complete,
             commands::github_auth::github_login_with_gh,
+            commands::git_auth_setup_gh,
+            commands::git_auth_status_gh,
             commands::github_auth::github_device_flow_configured,
             commands::github_auth::github_get_user,
             commands::github_auth::github_logout,

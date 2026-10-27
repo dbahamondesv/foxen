@@ -492,6 +492,10 @@ export const githubPollLogin = (state: GitHubLoginState) =>
 export const githubLoginComplete = (token: string, username: string | null = null) =>
   call<GitHubLoginResult>('github_login_complete', { token, username });
 
+export const gitAuthSetupGh = () => call<string>('git_auth_setup_gh');
+
+export const gitAuthStatusGh = () => call<string>('git_auth_status_gh');
+
 /** Inicia sesión reutilizando la sesión de la GitHub CLI (`gh`). */
 export const githubLoginWithGh = () => call<GitHubLoginResult>('github_login_with_gh');
 
