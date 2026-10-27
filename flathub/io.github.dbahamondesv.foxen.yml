@@ -1,0 +1,102 @@
+app-id: io.github.dbahamondesv.foxen
+runtime: org.gnome.Platform
+runtime-version: '50'
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+  - org.freedesktop.Sdk.Extension.node20
+command: foxen
+
+finish-args:
+  # Ventana / GPU
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+
+  # Git remotos / SSH
+  - --share=network
+  - --socket=ssh-auth
+
+  # Portales para abrir carpetas/repositorios
+  - --talk-name=org.freedesktop.portal.*
+  - --talk-name=org.gtk.vfs.*
+  - --filesystem=xdg-run/gvfsd
+
+  # Acceso a carpetas comunes via portal
+  - --filesystem=xdg-documents
+  - --filesystem=xdg-download
+  - --filesystem=xdg-public-share
+  - --filesystem=home:ro? # Opcional: evita si no lo necesitas. Mejor depender solo del portal
+
+  # Secret service / notificaciones
+  - --talk-name=org.freedesktop.secrets
+  - --talk-name=org.freedesktop.Notifications
+
+build-options:
+  append-path: /usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/node20/bin
+  env:
+    CARGO_HOME: /run/build/foxen/cargo
+    npm_config_nodedir: /usr/lib/sdk/node20
+    RUSTUP_TOOLCHAIN: stable
+
+modules:
+  - name: foxen
+    buildsystem: simple
+    sources:
+      - type: archive
+        url: https://github.com/dbahamondesv/foxen/archive/refs/tags/v0.1.0.tar.gz
+        sha256: eca83e3940e1a2e8cdbe6134e525019bed2571a6c4f28d17a26b3d0ffaf6fc8f
+        dest: .
+
+      # Si prefieres usar el repo git directamente:
+      # - type: git
+      #   url: https://github.com/dbahamondesv/foxen.git
+      #   tag: v0.1.0
+      #   commit: REEMPLAZA_CON_EL_COMMIT_DEL_TAG
+      #   dest: .
+
+    build-commands:
+      - |
+        set -e
+        export PATH=/usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/node20/bin:$PATH
+        export CARGO_NET_OFFLINE=true
+        export npm_config_offline=true
+
+      # Instalar dependencias frontend
+      - npm ci
+
+      # Compilar frontend con Vite
+      - npm run build
+
+      # Instalar CLI de Tauri (versión coherente con Cargo.lock)
+      - cargo install tauri-cli --version ^2 --locked --root /app
+
+      # Build con Tauri para Linux (genera binario + .desktop + iconos)
+      - /app/bin/cargo-tauri build --bundles app --no-bundle
+
+      # Instalar binario
+      - install -Dm755 src-tauri/target/release/foxen /app/bin/foxen
+
+      # AppStream metainfo (obligatorio)
+      - install -Dm644 packaging/io.github.dbahamondesv.foxen.metainfo.xml /app/share/metainfo/io.github.dbahamondesv.foxen.metainfo.xml
+
+      # .desktop
+      - install -Dm644 packaging/foxen.desktop /app/share/applications/io.github.dbahamondesv.foxen.desktop
+
+      # Iconos
+      - install -Dm644 src-tauri/icons/32x32.png /app/share/icons/hicolor/32x32/apps/io.github.dbahamondesv.foxen.png
+      - install -Dm644 src-tauri/icons/128x128.png /app/share/icons/hicolor/128x128/apps/io.github.dbahamondesv.foxen.png
+      - install -Dm644 src-tauri/icons/128x128@2x.png /app/share/icons/hicolor/256x256/apps/io.github.dbahamondesv.foxen.png
+      - install -Dm644 src-tauri/icons/icon.png /app/share/icons/hicolor/512x512/apps/io.github.dbahamondesv.foxen.png
+
+    cleanup:
+      - /app/.cargo
+      - /app/bin/cargo-tauri
+      - '*.a'
+      - /usr/lib/debug
+Notas sobre este manifest:
+- Uso io.github.dbahamondesv.foxen como App ID (coincide con tu metainfo). El binario sigue llamándose foxen. Eso es lo que Flathub espera.
+- --bundles app evita generar .deb/.rpm innecesarios dentro del sandbox.
+- Usa extensiones rust-stable y node20 del SDK. Suele funcionar bien con Tauri v2.
+- Si npm ci falla por red en tu primer test local con flatpak-builder, añade --share=network solo para esa fase o usa fuentes vendorizadas (flatpak-node-generator). Para el build real de Flathub lo ideal es generar generated-sources.json con flatpak-node-generator.
