@@ -6,6 +6,7 @@ import { CommitDetailModal } from './components/CommitDetailModal';
 import { TerminalPanel } from './components/TerminalPanel';
 import { PanelTabs, Toasts, TopBar } from './components/TopBar';
 import { SettingsPanel } from './components/SettingsPanel';
+import { GitAuthWarningBanner } from './components/GitAuthWarningBanner';
 import { GitHubAuthModal } from './components/GitHubAuthModal';
 import { GitHubReposModal } from './components/GitHubReposModal';
 import { PublishToGitHubModal } from './components/PublishToGitHubModal';
@@ -263,6 +264,7 @@ export default function App() {
       <TopBar />
 
       <OperationBanner />
+      {repoId && <GitAuthWarningBanner />}
 
       <div className={`layout${sidebarOpen ? '' : ' sidebar-hidden'}`}>
         <aside className={`sidebar${sidebarOpen ? '' : ' is-hidden'}`}>
